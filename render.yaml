@@ -1,0 +1,44 @@
+services:
+  # ─── API (Node.js) ──────────────────────────────────────────────────────────
+  - type: web
+    name: fitforge-api
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: apps/api
+    buildCommand: cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @fitforge/db build && pnpm --filter @fitforge/api build
+    startCommand: node dist/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: WEB_URL
+        sync: false
+
+  # ─── Web (Static Site) ──────────────────────────────────────────────────────
+  - type: web
+    name: fitforge-web
+    runtime: static
+    region: oregon
+    plan: free
+    rootDir: apps/web
+    buildCommand: cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @fitforge/web build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

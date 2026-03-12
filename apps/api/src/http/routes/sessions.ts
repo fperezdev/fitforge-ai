@@ -8,6 +8,8 @@ import {
   exerciseSets,
   personalRecords,
   exercises,
+  workoutTemplates,
+  templateExercises,
 } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
 import { authMiddleware, getUserId } from "../middleware/auth.js";
@@ -90,6 +92,49 @@ export const sessionRoutes = new Hono()
         startedAt: new Date(),
       })
       .returning();
+
+    // Seed exercises from template when templateId is provided
+    if (data.templateId) {
+      const template = await db.query.workoutTemplates.findFirst({
+        where: and(
+          eq(workoutTemplates.id, data.templateId),
+          eq(workoutTemplates.userId, userId)
+        ),
+        with: {
+          templateExercises: {
+            orderBy: (te, { asc }) => [asc(te.order)],
+          },
+        },
+      });
+
+      if (template && template.templateExercises.length > 0) {
+        const entries = await db
+          .insert(exerciseEntries)
+          .values(
+            template.templateExercises.map((te) => ({
+              workoutSessionId: session.id,
+              exerciseId: te.exerciseId,
+              order: te.order,
+            }))
+          )
+          .returning();
+
+        // Pre-populate sets based on targetSets from the template
+        const setRows = entries.flatMap((entry, idx) => {
+          const te = template.templateExercises[idx];
+          return Array.from({ length: te.targetSets }, (_, i) => ({
+            exerciseEntryId: entry.id,
+            setNumber: i + 1,
+            type: "working" as const,
+            completed: false,
+          }));
+        });
+
+        if (setRows.length > 0) {
+          await db.insert(exerciseSets).values(setRows);
+        }
+      }
+    }
 
     return c.json(session, 201);
   })

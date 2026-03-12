@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, Pencil } from "lucide-react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { Plus, Trash2, CalendarRange } from "lucide-react";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api } from "@/lib/api";
@@ -11,85 +12,71 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 
-interface Exercise {
-  id: string;
-  name: string;
-  category: string;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Template {
+interface TrainingPlan {
   id: string;
   name: string;
   description: string | null;
-  templateExercises: Array<{
-    id: string;
-    order: number;
-    targetSets: number;
-    targetRepMin: number;
-    targetRepMax: number;
-    restSeconds: number | null;
-    exercise: Exercise;
-  }>;
+  status: "draft" | "active" | "completed";
+  microcycleLength: number;
+  mesocycleLength: number;
+  updatedAt: string;
 }
 
-const templateSchema = z.object({
+// ─── Schema ───────────────────────────────────────────────────────────────────
+
+const newPlanSchema = z.object({
   name: z.string().min(1, "Name required"),
   description: z.string().optional(),
-  exercises: z.array(
-    z.object({
-      exerciseId: z.string().min(1, "Required"),
-      order: z.number().int().min(1),
-      targetSets: z.number().int().min(1),
-      targetRepMin: z.number().int().min(1),
-      targetRepMax: z.number().int().min(1),
-      restSeconds: z.number().int().optional().nullable(),
-    })
-  ),
+  microcycleLength: z.number().int().min(1).max(31),
+  mesocycleLength: z.number().int().min(1).max(52),
 });
 
-type TemplateForm = z.infer<typeof templateSchema>;
+type NewPlanForm = z.infer<typeof newPlanSchema>;
 
-function TemplateCard({
-  template,
-  onEdit,
+// ─── Plan Card ────────────────────────────────────────────────────────────────
+
+const STATUS_COLORS = {
+  draft: "secondary",
+  active: "success",
+  completed: "default",
+} as const;
+
+function PlanCard({
+  plan,
+  onClick,
   onDelete,
 }: {
-  template: Template;
-  onEdit: (t: Template) => void;
+  plan: TrainingPlan;
+  onClick: () => void;
   onDelete: (id: string) => void;
 }) {
   return (
-    <Card className="hover:border-primary/50 transition-colors cursor-pointer group">
+    <Card
+      className="hover:border-primary/50 transition-colors cursor-pointer group"
+      onClick={onClick}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <CardTitle className="text-base">{template.name}</CardTitle>
-            {template.description && (
+            <CardTitle className="text-base">{plan.name}</CardTitle>
+            {plan.description && (
               <p className="text-sm text-muted-foreground mt-0.5">
-                {template.description}
+                {plan.description}
               </p>
             )}
           </div>
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1">
+            <Badge variant={STATUS_COLORS[plan.status]}>
+              {plan.status.charAt(0).toUpperCase() + plan.status.slice(1)}
+            </Badge>
             <Button
               variant="ghost"
               size="icon"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(template);
-              }}
-              aria-label="Edit template"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(template.id);
-              }}
-              aria-label="Delete template"
+              onClick={(e) => { e.stopPropagation(); onDelete(plan.id); }}
+              aria-label="Delete plan"
+              className="opacity-0 group-hover:opacity-100 transition-opacity"
             >
               <Trash2 className="h-3.5 w-3.5 text-destructive" />
             </Button>
@@ -97,268 +84,157 @@ function TemplateCard({
         </div>
       </CardHeader>
       <CardContent>
-        <div className="flex flex-wrap gap-1.5">
-          {template.templateExercises.map((ex) => (
-            <Badge key={ex.id} variant="secondary">
-              {ex.exercise.name} {ex.targetSets}×{ex.targetRepMin}–{ex.targetRepMax}
-            </Badge>
-          ))}
+        <div className="flex gap-3 text-sm text-muted-foreground">
+          <span>{plan.mesocycleLength} week{plan.mesocycleLength !== 1 ? "s" : ""}</span>
+          <span>·</span>
+          <span>{plan.microcycleLength} days/week</span>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-export function PlannerPage() {
+// ─── New Plan Modal ───────────────────────────────────────────────────────────
+
+function NewPlanModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<Template | null>(null);
-
-  const { data: templates = [] } = useQuery<Template[]>({
-    queryKey: ["templates"],
-    queryFn: () => api.get("/templates"),
-  });
-
-  const { data: exercises = [] } = useQuery<Exercise[]>({
-    queryKey: ["exercises"],
-    queryFn: () => api.get("/exercises"),
-  });
-
   const {
     register,
     handleSubmit,
-    control,
     reset,
     formState: { errors, isSubmitting },
-  } = useForm<TemplateForm>({
-    resolver: zodResolver(templateSchema),
-    defaultValues: { exercises: [] },
+  } = useForm<NewPlanForm>({
+    resolver: zodResolver(newPlanSchema),
+    defaultValues: { microcycleLength: 7, mesocycleLength: 4 },
   });
 
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: "exercises",
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: (data: TemplateForm) =>
-      editing
-        ? api.put(`/templates/${editing.id}`, data)
-        : api.post("/templates", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["templates"] });
-      setModalOpen(false);
-      setEditing(null);
-      reset({ exercises: [] });
+  const createMutation = useMutation({
+    mutationFn: (data: NewPlanForm) => api.post<TrainingPlan>("/plans", data),
+    onSuccess: (plan) => {
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
+      reset();
+      onClose();
+      navigate(`/planner/plans/${plan.id}`);
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/templates/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["templates"] }),
+  return (
+    <Modal open={open} onClose={onClose} title="New training plan">
+      <form
+        onSubmit={handleSubmit((d) => createMutation.mutate(d))}
+        className="space-y-4"
+        noValidate
+      >
+        <Input
+          label="Plan name"
+          placeholder="e.g. Hypertrophy Block A"
+          error={errors.name?.message}
+          {...register("name")}
+        />
+        <Input
+          label="Description (optional)"
+          placeholder="Goal, notes…"
+          {...register("description")}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Days per week"
+            type="number"
+            min={1}
+            max={31}
+            error={errors.microcycleLength?.message}
+            {...register("microcycleLength", { valueAsNumber: true })}
+          />
+          <Input
+            label="Number of weeks"
+            type="number"
+            min={1}
+            max={52}
+            error={errors.mesocycleLength?.message}
+            {...register("mesocycleLength", { valueAsNumber: true })}
+          />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={isSubmitting || createMutation.isPending}>
+            Create plan
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export function PlannerPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [planModalOpen, setPlanModalOpen] = useState(false);
+
+  const { data: plans = [] } = useQuery<TrainingPlan[]>({
+    queryKey: ["plans"],
+    queryFn: () => api.get("/plans"),
   });
 
-  function openCreate() {
-    setEditing(null);
-    reset({ name: "", description: "", exercises: [] });
-    setModalOpen(true);
-  }
-
-  function openEdit(template: Template) {
-    setEditing(template);
-    reset({
-      name: template.name,
-      description: template.description ?? "",
-      exercises: template.templateExercises.map((ex) => ({
-        exerciseId: ex.exercise.id,
-        order: ex.order,
-        targetSets: ex.targetSets,
-        targetRepMin: ex.targetRepMin,
-        targetRepMax: ex.targetRepMax,
-        restSeconds: ex.restSeconds,
-      })),
-    });
-    setModalOpen(true);
-  }
+  const deletePlan = useMutation({
+    mutationFn: (id: string) => api.delete(`/plans/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plans"] }),
+  });
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Page header */}
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Workout Planner</h1>
+          <h1 className="text-2xl font-bold">Training Plans</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {templates.length} template{templates.length !== 1 ? "s" : ""}
+            {plans.length} plan{plans.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={() => setPlanModalOpen(true)}>
           <Plus className="h-4 w-4" />
-          New template
+          New plan
         </Button>
       </div>
 
-      {templates.length === 0 ? (
+      {/* Plan list */}
+      {plans.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
+            <CalendarRange className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">
-              No templates yet. Create one or ask the{" "}
+              No training plans yet. Create one or ask the{" "}
               <span className="text-primary">AI Coach</span> to generate a plan.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {templates.map((t) => (
-            <TemplateCard
-              key={t.id}
-              template={t}
-              onEdit={openEdit}
-              onDelete={(id) => deleteMutation.mutate(id)}
+          {plans.map((p) => (
+            <PlanCard
+              key={p.id}
+              plan={p}
+              onClick={() => navigate(`/planner/plans/${p.id}`)}
+              onDelete={(id) => deletePlan.mutate(id)}
             />
           ))}
         </div>
       )}
 
-      <Modal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        title={editing ? "Edit template" : "New template"}
-        className="max-w-2xl max-h-[90vh] overflow-y-auto"
-      >
-        <form
-          onSubmit={handleSubmit((d) => saveMutation.mutate(d))}
-          className="space-y-5"
-          noValidate
-        >
-          <Input
-            label="Template name"
-            placeholder="e.g. Push A – Chest & Shoulders"
-            error={errors.name?.message}
-            {...register("name")}
-          />
-          <Input
-            label="Description (optional)"
-            placeholder="Brief notes about this template"
-            {...register("description")}
-          />
-
-          {/* Exercises */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium">Exercises</label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  append({
-                    exerciseId: "",
-                    order: fields.length + 1,
-                    targetSets: 3,
-                    targetRepMin: 8,
-                    targetRepMax: 12,
-                    restSeconds: 90,
-                  })
-                }
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add exercise
-              </Button>
-            </div>
-
-            <div className="space-y-3">
-              {fields.map((field, i) => (
-                <div
-                  key={field.id}
-                  className="rounded-lg border border-border p-3 space-y-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Exercise {i + 1}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => remove(i)}
-                      aria-label="Remove exercise"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium mb-1.5 block">
-                      Exercise
-                    </label>
-                    <select
-                      className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                      {...register(`exercises.${i}.exerciseId`)}
-                    >
-                      <option value="">Select exercise…</option>
-                      {exercises.map((ex) => (
-                        <option key={ex.id} value={ex.id}>
-                          {ex.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-2">
-                    <Input
-                      label="Sets"
-                      type="number"
-                      min={1}
-                      {...register(`exercises.${i}.targetSets`, {
-                        valueAsNumber: true,
-                      })}
-                    />
-                    <Input
-                      label="Rep min"
-                      type="number"
-                      min={1}
-                      {...register(`exercises.${i}.targetRepMin`, {
-                        valueAsNumber: true,
-                      })}
-                    />
-                    <Input
-                      label="Rep max"
-                      type="number"
-                      min={1}
-                      {...register(`exercises.${i}.targetRepMax`, {
-                        valueAsNumber: true,
-                      })}
-                    />
-                    <Input
-                      label="Rest (s)"
-                      type="number"
-                      min={0}
-                      {...register(`exercises.${i}.restSeconds`, {
-                        valueAsNumber: true,
-                      })}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              loading={isSubmitting || saveMutation.isPending}
-            >
-              {editing ? "Save changes" : "Create template"}
-            </Button>
-          </div>
-        </form>
-      </Modal>
+      <NewPlanModal
+        open={planModalOpen}
+        onClose={() => setPlanModalOpen(false)}
+      />
     </div>
   );
 }

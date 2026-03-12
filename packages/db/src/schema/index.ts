@@ -1,5 +1,6 @@
 import {
   pgTable,
+  pgEnum,
   uuid,
   varchar,
   text,
@@ -12,6 +13,34 @@ import {
   pgSchema,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+
+export const muscleEnum = pgEnum("muscle", [
+  "chest",
+  "upper_chest",
+  "lower_chest",
+  "back",
+  "lats",
+  "upper_back",
+  "lower_back",
+  "traps",
+  "anterior_deltoids",
+  "lateral_deltoids",
+  "posterior_deltoids",
+  "biceps",
+  "triceps",
+  "forearms",
+  "core",
+  "obliques",
+  "glutes",
+  "quadriceps",
+  "hamstrings",
+  "calves",
+  "soleus",
+  "hip_flexors",
+  "adductors",
+  "full_body",
+  "other",
+]);
 
 // Reference to Supabase's auth schema
 const authSchema = pgSchema("auth");
@@ -49,19 +78,9 @@ export const userProfiles = pgTable("user_profiles", {
 export const exercises = pgTable("exercises", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull(),
-  category: varchar("category", { length: 100 }).notNull(),
-  primaryMuscles: text("primary_muscles").array(),
-  secondaryMuscles: text("secondary_muscles").array(),
-  equipment: varchar("equipment", { length: 100 }).notNull(),
-  isCustom: boolean("is_custom").notNull().default(false),
-  createdBy: uuid("created_by").references(() => authUsers.id, {
-    onDelete: "set null",
-  }),
-  instructions: text("instructions"),
+  primaryMuscle: muscleEnum("primary_muscle").notNull().default("other"),
+  secondaryMuscles: muscleEnum("secondary_muscles").array().notNull().default(sql`'{}'::muscle[]`),
   createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
@@ -95,6 +114,7 @@ export const templateExercises = pgTable("template_exercises", {
   targetSets: integer("target_sets").notNull(),
   targetRepMin: integer("target_rep_min").notNull(),
   targetRepMax: integer("target_rep_max").notNull(),
+  rir: integer("rir"),
   restSeconds: integer("rest_seconds"),
 });
 
@@ -192,6 +212,10 @@ export const cardioSessions = pgTable("cardio_sessions", {
   caloriesBurned: integer("calories_burned"),
   elevationGainMeters: integer("elevation_gain_meters"),
   notes: text("notes"),
+  cardioTemplateId: uuid("cardio_template_id").references(
+    () => cardioTemplates.id,
+    { onDelete: "set null" }
+  ),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -347,12 +371,94 @@ export const coachMessages = pgTable("coach_messages", {
     .defaultNow(),
 });
 
+// ─── Cardio Templates ─────────────────────────────────────────────────────────
+
+export const cardioTemplates = pgTable("cardio_templates", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const cardioTemplateExercises = pgTable("cardio_template_exercises", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  cardioTemplateId: uuid("cardio_template_id")
+    .notNull()
+    .references(() => cardioTemplates.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  zone: integer("zone"),
+  kilometers: numeric("kilometers"),
+  order: integer("order").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ─── Training Plans ───────────────────────────────────────────────────────────
+
+export const trainingPlans = pgTable("training_plans", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 50 }).notNull().default("draft"), // 'draft' | 'active' | 'completed'
+  microcycleLength: integer("microcycle_length").notNull().default(7),
+  mesocycleLength: integer("mesocycle_length").notNull().default(4),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const planMicrocycles = pgTable("plan_microcycles", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  trainingPlanId: uuid("training_plan_id")
+    .notNull()
+    .references(() => trainingPlans.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based index
+  name: varchar("name", { length: 255 }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const planDays = pgTable("plan_days", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  planMicrocycleId: uuid("plan_microcycle_id")
+    .notNull()
+    .references(() => planMicrocycles.id, { onDelete: "cascade" }),
+  dayNumber: integer("day_number").notNull(), // 1-based, within microcycle
+  type: varchar("type", { length: 50 }).notNull().default("training"), // 'training' | 'rest'
+  workoutTemplateId: uuid("workout_template_id").references(
+    () => workoutTemplates.id,
+    { onDelete: "set null" }
+  ),
+  cardioTemplateId: uuid("cardio_template_id").references(
+    () => cardioTemplates.id,
+    { onDelete: "set null" }
+  ),
+  notes: text("notes"),
+});
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const workoutTemplatesRelations = relations(
   workoutTemplates,
   ({ many }) => ({
     templateExercises: many(templateExercises),
+    planDaysStrength: many(planDays, { relationName: "strengthTemplate" }),
   })
 );
 
@@ -416,9 +522,13 @@ export const personalRecordsRelations = relations(
 
 export const cardioSessionsRelations = relations(
   cardioSessions,
-  ({ many }) => ({
+  ({ one, many }) => ({
     splits: many(cardioSplits),
     routePoints: many(cardioRoutePoints),
+    cardioTemplate: one(cardioTemplates, {
+      fields: [cardioSessions.cardioTemplateId],
+      references: [cardioTemplates.id],
+    }),
   })
 );
 
@@ -465,5 +575,55 @@ export const coachMessagesRelations = relations(coachMessages, ({ one }) => ({
   coachRequest: one(coachRequests, {
     fields: [coachMessages.coachRequestId],
     references: [coachRequests.id],
+  }),
+}));
+
+export const cardioTemplatesRelations = relations(
+  cardioTemplates,
+  ({ many }) => ({
+    cardioTemplateExercises: many(cardioTemplateExercises),
+    planDays: many(planDays),
+    cardioSessions: many(cardioSessions),
+  })
+);
+
+export const cardioTemplateExercisesRelations = relations(
+  cardioTemplateExercises,
+  ({ one }) => ({
+    cardioTemplate: one(cardioTemplates, {
+      fields: [cardioTemplateExercises.cardioTemplateId],
+      references: [cardioTemplates.id],
+    }),
+  })
+);
+
+export const trainingPlansRelations = relations(trainingPlans, ({ many }) => ({
+  microcycles: many(planMicrocycles),
+}));
+
+export const planMicrocyclesRelations = relations(
+  planMicrocycles,
+  ({ one, many }) => ({
+    trainingPlan: one(trainingPlans, {
+      fields: [planMicrocycles.trainingPlanId],
+      references: [trainingPlans.id],
+    }),
+    days: many(planDays),
+  })
+);
+
+export const planDaysRelations = relations(planDays, ({ one }) => ({
+  microcycle: one(planMicrocycles, {
+    fields: [planDays.planMicrocycleId],
+    references: [planMicrocycles.id],
+  }),
+  workoutTemplate: one(workoutTemplates, {
+    fields: [planDays.workoutTemplateId],
+    references: [workoutTemplates.id],
+    relationName: "strengthTemplate",
+  }),
+  cardioTemplate: one(cardioTemplates, {
+    fields: [planDays.cardioTemplateId],
+    references: [cardioTemplates.id],
   }),
 }));

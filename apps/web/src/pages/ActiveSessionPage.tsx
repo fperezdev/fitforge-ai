@@ -14,10 +14,10 @@ interface Session {
   name: string | null;
   status: string;
   startedAt: string;
-  entries: Array<{
+  exerciseEntries: Array<{
     id: string;
     order: number;
-    exercise: { id: string; name: string; category: string };
+    exercise: { id: string; name: string; primaryMuscle: string };
     sets: Array<{
       id: string;
       setNumber: number;
@@ -66,7 +66,7 @@ function SetRow({
   set,
   onUpdate,
 }: {
-  set: Session["entries"][0]["sets"][0];
+  set: Session["exerciseEntries"][0]["sets"][0];
   onUpdate: (data: Partial<typeof set>) => void;
 }) {
   const [weight, setWeight] = useState(set.weightKg ?? "");
@@ -181,8 +181,8 @@ export function ActiveSessionPage() {
     );
   }
 
-  const totalSets = session.entries.flatMap((e) => e.sets).length;
-  const completedSets = session.entries
+  const totalSets = session.exerciseEntries.flatMap((e) => e.sets).length;
+  const completedSets = session.exerciseEntries
     .flatMap((e) => e.sets)
     .filter((s) => s.completed).length;
 
@@ -226,7 +226,7 @@ export function ActiveSessionPage() {
 
       {/* Exercise list */}
       <div className="space-y-3">
-        {session.entries
+        {session.exerciseEntries
           .sort((a, b) => a.order - b.order)
           .map((entry) => {
             const isExpanded = expandedEntry === entry.id;

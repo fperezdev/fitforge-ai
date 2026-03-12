@@ -160,6 +160,7 @@ export const coachRoutes = new Hono()
             } catch (err) {
               const errorMsg =
                 err instanceof Error ? err.message : "Unknown error";
+              console.error("[coach] LLM request failed:", err);
               await db
                 .update(coachRequests)
                 .set({ status: "failed", error: errorMsg, completedAt: new Date() })
@@ -167,7 +168,7 @@ export const coachRoutes = new Hono()
 
               controller.enqueue(
                 encoder.encode(
-                  `data: ${JSON.stringify({ error: errorMsg })}\n\n`
+                  `data: ${JSON.stringify({ error: "Failed to get a response. Please try again." })}\n\n`
                 )
               );
             } finally {

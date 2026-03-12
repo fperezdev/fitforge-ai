@@ -12,16 +12,38 @@ export interface UserProfile {
   experienceLevel: string | null;
 }
 
+export type Muscle =
+  | "chest"
+  | "upper_chest"
+  | "lower_chest"
+  | "back"
+  | "lats"
+  | "upper_back"
+  | "lower_back"
+  | "traps"
+  | "anterior_deltoids"
+  | "lateral_deltoids"
+  | "posterior_deltoids"
+  | "biceps"
+  | "triceps"
+  | "forearms"
+  | "core"
+  | "obliques"
+  | "glutes"
+  | "quadriceps"
+  | "hamstrings"
+  | "calves"
+  | "soleus"
+  | "hip_flexors"
+  | "adductors"
+  | "full_body"
+  | "other";
+
 export interface Exercise {
   id: string;
   name: string;
-  category: string;
-  primaryMuscles: string[];
-  secondaryMuscles: string[];
-  equipment: string;
-  isCustom: boolean;
-  createdBy: string | null;
-  instructions: string | null;
+  primaryMuscle: Muscle;
+  secondaryMuscles: Muscle[];
 }
 
 export interface WorkoutTemplate {
@@ -150,4 +172,5 @@ export interface CoachContext {
   weightTrend: WeightEntry[];
   activeGoals: BodyGoal[];
   conversationHistory: CoachMessage[];
+  exercises: Exercise[];
 }

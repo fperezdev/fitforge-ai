@@ -17,6 +17,7 @@ const createTemplateSchema = z.object({
         targetSets: z.number().int().min(1),
         targetRepMin: z.number().int().min(1),
         targetRepMax: z.number().int().min(1),
+        rir: z.number().int().min(0).optional().nullable(),
         restSeconds: z.number().int().optional().nullable(),
       })
     )

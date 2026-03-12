@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Plus, Bot, User, Loader2 } from "lucide-react";
-import { api, streamCoach } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
+import { Send, Plus, Bot, User, Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import { api, importPlanFromAI, streamCoach } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
@@ -29,6 +29,139 @@ function extractPlan(content: string): object | null {
   } catch {
     return null;
   }
+}
+
+interface StrengthExercise {
+  name: string;
+  sets?: number;
+  repMin?: number;
+  repMax?: number;
+  restSeconds?: number;
+  rir?: number;
+}
+
+interface CardioExercise {
+  name: string;
+  zone?: number;
+  kilometers?: number;
+}
+
+interface WorkoutBlock {
+  name?: string;
+  exercises: StrengthExercise[];
+}
+
+interface CardioBlock {
+  name?: string;
+  exercises: CardioExercise[];
+}
+
+interface Day {
+  day: number;
+  rest?: boolean;
+  restNote?: string;
+  workout?: WorkoutBlock;
+  cardio?: CardioBlock;
+}
+
+interface Week {
+  week: number;
+  days: Day[];
+}
+
+interface WorkoutPlan {
+  name: string;
+  description?: string;
+  weeks: Week[];
+}
+
+function strengthDetail(ex: StrengthExercise): string {
+  const reps =
+    ex.repMin && ex.repMax
+      ? ex.repMin === ex.repMax
+        ? `${ex.repMin} reps`
+        : `${ex.repMin}–${ex.repMax} reps`
+      : null;
+  return [`${ex.sets} sets`, reps, ex.rir !== undefined ? `RIR ${ex.rir}` : null, ex.restSeconds ? `${ex.restSeconds}s rest` : null]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function cardioDetail(ex: CardioExercise): string {
+  return [ex.kilometers !== undefined ? `${ex.kilometers} km` : null, ex.zone !== undefined ? `Zone ${ex.zone}` : null]
+    .filter(Boolean)
+    .join(", ");
+}
+
+function ExerciseList<T extends { name: string }>({
+  exercises,
+  detail,
+}: {
+  exercises: T[];
+  detail: (ex: T) => string;
+}) {
+  return (
+    <ul className="mt-1 space-y-0.5 pl-3">
+      {exercises.map((ex, i) => {
+        const d = detail(ex);
+        return (
+          <li key={i} className="text-xs list-disc list-inside">
+            <span className="font-medium">{ex.name}</span>
+            {d ? ` — ${d}` : ""}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function PlanDisplay({ plan }: { plan: WorkoutPlan }) {
+  return (
+    <div className="mt-3 space-y-3 text-sm">
+      <div>
+        <p className="font-semibold">{plan.name}</p>
+        {plan.description && (
+          <p className="text-xs text-muted-foreground mt-0.5">{plan.description}</p>
+        )}
+      </div>
+      {plan.weeks.map((week) => (
+        <div key={week.week}>
+          <p className="font-medium text-xs uppercase tracking-wide mb-1">
+            Week {week.week}
+          </p>
+          {week.days.map((day, di) => (
+            <div key={di} className="mb-2">
+              <p className="font-medium">Day {day.day}</p>
+              {day.rest ? (
+                <p className="text-xs text-muted-foreground mt-0.5 pl-3">
+                  Rest day{day.restNote ? ` — ${day.restNote}` : ""}
+                </p>
+              ) : (
+                <>
+                  {day.workout && (
+                    <div>
+                      {day.workout.name && (
+                        <p className="text-xs font-medium pl-3 mt-0.5">{day.workout.name}</p>
+                      )}
+                      <ExerciseList exercises={day.workout.exercises} detail={strengthDetail} />
+                    </div>
+                  )}
+                  {day.cardio && (
+                    <div className="mt-1">
+                      {day.cardio.name && (
+                        <p className="text-xs font-medium pl-3 mt-0.5">{day.cardio.name}</p>
+                      )}
+                      <ExerciseList exercises={day.cardio.exercises} detail={cardioDetail} />
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function MessageBubble({
@@ -62,13 +195,14 @@ function MessageBubble({
         )}
       >
         <p className="whitespace-pre-wrap">{displayContent}</p>
+        {plan && <PlanDisplay plan={plan as WorkoutPlan} />}
         {plan && (
           <button
             onClick={() => onSavePlan?.(plan)}
             className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
           >
             <Plus className="h-3 w-3" />
-            Save this plan as workout template
+            Import as Training Plan
           </button>
         )}
       </div>
@@ -76,13 +210,45 @@ function MessageBubble({
   );
 }
 
+function FailedMessageBubble({
+  content,
+  onRetry,
+}: {
+  content: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div
+        className="h-7 w-7 rounded-full bg-destructive/10 flex items-center justify-center shrink-0 mt-0.5"
+        aria-hidden
+      >
+        <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+      </div>
+      <div className="max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm bg-destructive/10 text-destructive border border-destructive/20">
+        <p>{content}</p>
+        <button
+          onClick={onRetry}
+          className="mt-3 flex items-center gap-1.5 text-xs font-medium hover:underline"
+        >
+          <RefreshCw className="h-3 w-3" />
+          Retry message
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function CoachPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeConv, setActiveConv] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [streamingMsg, setStreamingMsg] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [planToSave, setPlanToSave] = useState<object | null>(null);
+  const [failedMessage, setFailedMessage] = useState<{ convId: string; content: string } | null>(null);
+  const lastServerMessagesRef = useRef<Message[]>([]);
   const streamControllerRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -97,6 +263,11 @@ export function CoachPage() {
     enabled: !!activeConv,
   });
 
+  // Keep a ref to the last data that came from the server (not optimistic)
+  useEffect(() => {
+    lastServerMessagesRef.current = messages;
+  }, [messages]);
+
   const createConvMutation = useMutation({
     mutationFn: (title?: string) =>
       api.post<Conversation>("/coach/conversations", { title }),
@@ -106,42 +277,54 @@ export function CoachPage() {
     },
   });
 
-  const saveTemplateMutation = useMutation({
-    mutationFn: (plan: Record<string, unknown>) =>
-      api.post("/templates", {
-        name: plan.name ?? "AI Generated Plan",
-        description: plan.description,
-        exercises: [],
-      }),
-    onSuccess: () => {
+  const importPlanMutation = useMutation({
+    mutationFn: (plan: object) => importPlanFromAI(plan),
+    onSuccess: (result) => {
       setPlanToSave(null);
-      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
+      navigate(`/planner/plans/${result.id}`);
     },
   });
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamingMsg]);
+  }, [messages, streamingMsg, failedMessage]);
 
-  function sendMessage() {
-    if (!activeConv || !inputValue.trim() || isStreaming) return;
+  // Clear failed message when switching conversations
+  useEffect(() => {
+    setFailedMessage(null);
+  }, [activeConv]);
 
-    const msg = inputValue.trim();
-    setInputValue("");
+  function sendMessage(content?: string) {
+    if (!activeConv || isStreaming) return;
+    const isRetry = content !== undefined;
+    const msg = content ?? inputValue.trim();
+    if (!msg) return;
+
+    if (!isRetry) setInputValue("");
+    setFailedMessage(null);
     setStreamingMsg("");
     setIsStreaming(true);
 
-    // Optimistically add user message
-    queryClient.setQueryData<Message[]>(["messages", activeConv], (prev) => [
-      ...(prev ?? []),
-      {
-        id: `optimistic-${Date.now()}`,
-        conversationId: activeConv,
-        role: "user",
-        content: msg,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    if (isRetry) {
+      // Reset cache to last server state to remove the stale optimistic message
+      queryClient.setQueryData<Message[]>(
+        ["messages", activeConv],
+        lastServerMessagesRef.current
+      );
+    } else {
+      // Optimistically add user message
+      queryClient.setQueryData<Message[]>(["messages", activeConv], (prev) => [
+        ...(prev ?? []),
+        {
+          id: `optimistic-${Date.now()}`,
+          conversationId: activeConv,
+          role: "user",
+          content: msg,
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
 
     streamControllerRef.current = streamCoach(
       activeConv,
@@ -156,10 +339,19 @@ export function CoachPage() {
       (err) => {
         setIsStreaming(false);
         setStreamingMsg("");
-        console.error("Coach error:", err);
+        setFailedMessage({
+          convId: activeConv,
+          content: err.message || "Failed to get a response. Please try again.",
+        });
       }
     );
   }
+
+  // Show the failed bubble only when it belongs to the active conversation
+  const showFailedBubble = failedMessage?.convId === activeConv;
+
+  // The last user message from server state — used for retry
+  const lastUserMessage = [...lastServerMessagesRef.current].reverse().find((m) => m.role === "user");
 
   return (
     <div className="flex h-[calc(100vh-6rem)] gap-4">
@@ -240,6 +432,14 @@ export function CoachPage() {
                 />
               ))}
 
+              {/* Failed message bubble */}
+              {showFailedBubble && (
+                <FailedMessageBubble
+                  content={failedMessage!.content}
+                  onRetry={() => sendMessage(lastUserMessage?.content)}
+                />
+              )}
+
               {/* Streaming bubble */}
               {isStreaming && (
                 <div className="flex gap-3">
@@ -247,11 +447,28 @@ export function CoachPage() {
                     <Bot className="h-3.5 w-3.5" />
                   </div>
                   <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 text-sm">
-                    {streamingMsg ? (
-                      <p className="whitespace-pre-wrap">{streamingMsg}</p>
-                    ) : (
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    )}
+                    {(() => {
+                      const planStart = streamingMsg.indexOf("<plan>");
+                      const visibleText = planStart === -1
+                        ? streamingMsg
+                        : streamingMsg.slice(0, planStart).trim();
+                      const buildingPlan = planStart !== -1;
+                      return (
+                        <>
+                          {visibleText ? (
+                            <p className="whitespace-pre-wrap">{visibleText}</p>
+                          ) : !buildingPlan ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : null}
+                          {buildingPlan && (
+                            <p className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Building your workout plan…
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -289,30 +506,30 @@ export function CoachPage() {
         )}
       </div>
 
-      {/* Plan save modal */}
+      {/* Plan import modal */}
       <Modal
         open={!!planToSave}
         onClose={() => setPlanToSave(null)}
-        title="Save workout plan"
+        title="Import as Training Plan"
       >
         <p className="text-sm text-muted-foreground mb-4">
-          The AI generated a structured plan. Do you want to save it as a
-          workout template?
+          The AI generated a structured plan. Save it as a Training Plan to
+          review and assign workouts day by day.
         </p>
-        <pre className="text-xs bg-muted rounded-lg p-3 overflow-auto max-h-48 mb-4">
-          {JSON.stringify(planToSave, null, 2)}
-        </pre>
+        {planToSave && (
+          <div className="bg-muted rounded-lg p-3 overflow-auto max-h-48 mb-4">
+            <PlanDisplay plan={planToSave as WorkoutPlan} />
+          </div>
+        )}
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setPlanToSave(null)}>
             Cancel
           </Button>
           <Button
-            onClick={() =>
-              planToSave && saveTemplateMutation.mutate(planToSave as Record<string, unknown>)
-            }
-            loading={saveTemplateMutation.isPending}
+            onClick={() => planToSave && importPlanMutation.mutate(planToSave)}
+            loading={importPlanMutation.isPending}
           >
-            Save plan
+            Import Plan
           </Button>
         </div>
       </Modal>

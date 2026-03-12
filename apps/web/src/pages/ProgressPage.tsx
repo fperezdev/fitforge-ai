@@ -19,7 +19,7 @@ interface PR {
   type: string;
   value: string;
   achievedAt: string;
-  exercise: { name: string; category: string };
+  exercise: { name: string; primaryMuscle: string };
 }
 
 interface WeightEntry {
@@ -149,7 +149,7 @@ export function ProgressPage() {
                     <Badge variant="success">
                       {Number(pr.value).toFixed(1)} kg
                     </Badge>
-                    <Badge variant="secondary">{pr.exercise.category}</Badge>
+                    <Badge variant="secondary">{pr.exercise.primaryMuscle ?? "—"}</Badge>
                   </div>
                 </div>
               ))}

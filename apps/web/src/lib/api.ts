@@ -76,13 +76,20 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
+export function importPlanFromAI(plan: object): Promise<{ id: string }> {
+  return request<{ id: string }>("/plans/from-ai", {
+    method: "POST",
+    body: JSON.stringify(plan),
+  });
+}
+
 // SSE streaming for coach
 export function streamCoach(
   conversationId: string,
   content: string,
   onChunk: (chunk: string) => void,
   onDone: (messageId: string) => void,
-  onError: (err: string) => void
+  onError: (err: Error) => void
 ): AbortController {
   const controller = new AbortController();
   const token = getToken();
@@ -97,7 +104,7 @@ export function streamCoach(
     signal: controller.signal,
   }).then(async (res) => {
     if (!res.ok || !res.body) {
-      onError("Failed to connect to coach");
+      onError(new Error("Failed to connect to coach"));
       return;
     }
     const reader = res.body.getReader();
@@ -115,14 +122,18 @@ export function streamCoach(
           const data = JSON.parse(line.slice(6));
           if (data.chunk) onChunk(data.chunk);
           if (data.done) onDone(data.messageId);
-          if (data.error) onError(data.error);
+          if (data.error) {
+            onError(new Error(data.error));
+          }
         } catch {
           // ignore malformed lines
         }
       }
     }
   }).catch((err) => {
-    if (err.name !== "AbortError") onError(err.message);
+    if (err.name !== "AbortError") {
+      onError(err instanceof Error ? err : new Error(err));
+    }
   });
 
   return controller;

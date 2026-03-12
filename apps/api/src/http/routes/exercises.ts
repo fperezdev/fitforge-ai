@@ -1,42 +1,58 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, or, ilike, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { exercises } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
-import { authMiddleware, getUserId } from "../middleware/auth.js";
+import { authMiddleware } from "../middleware/auth.js";
+
+export const MUSCLES = [
+  "chest",
+  "upper_chest",
+  "lower_chest",
+  "back",
+  "lats",
+  "upper_back",
+  "lower_back",
+  "traps",
+  "anterior_deltoids",
+  "lateral_deltoids",
+  "posterior_deltoids",
+  "biceps",
+  "triceps",
+  "forearms",
+  "core",
+  "obliques",
+  "glutes",
+  "quadriceps",
+  "hamstrings",
+  "calves",
+  "soleus",
+  "hip_flexors",
+  "adductors",
+  "full_body",
+  "other",
+] as const;
+
+const muscleSchema = z.enum(MUSCLES);
 
 const createExerciseSchema = z.object({
   name: z.string().min(2).max(255),
-  category: z.string(),
-  primaryMuscles: z.array(z.string()).default([]),
-  secondaryMuscles: z.array(z.string()).default([]),
-  equipment: z.string(),
-  instructions: z.string().optional().nullable(),
+  primaryMuscle: muscleSchema,
+  secondaryMuscles: z.array(muscleSchema).default([]),
 });
 
 export const exerciseRoutes = new Hono()
   .use("*", authMiddleware)
 
   .get("/", async (c) => {
-    const userId = getUserId(c);
     const db = getDb();
     const search = c.req.query("search");
-    const category = c.req.query("category");
     const muscle = c.req.query("muscle");
 
-    const conditions = [
-      or(eq(exercises.isCustom, false), eq(exercises.createdBy, userId)),
-    ];
-
-    if (category) {
-      conditions.push(eq(exercises.category, category));
-    }
-
     const results = await db.query.exercises.findMany({
-      where: and(...(conditions as any[])),
       orderBy: (ex, { asc }) => [asc(ex.name)],
-      limit: 100,
+      limit: 200,
     });
 
     const filtered = search
@@ -45,9 +61,14 @@ export const exerciseRoutes = new Hono()
         )
       : results;
 
-    const muscleFiltered = muscle
-      ? filtered.filter((e) => e.primaryMuscles?.includes(muscle))
-      : filtered;
+    const muscleFiltered =
+      muscle && muscleSchema.safeParse(muscle).success
+        ? filtered.filter(
+            (e) =>
+              e.primaryMuscle === muscle ||
+              e.secondaryMuscles.includes(muscle as any)
+          )
+        : filtered;
 
     return c.json(muscleFiltered);
   })
@@ -63,14 +84,10 @@ export const exerciseRoutes = new Hono()
   })
 
   .post("/", zValidator("json", createExerciseSchema), async (c) => {
-    const userId = getUserId(c);
     const data = c.req.valid("json");
     const db = getDb();
 
-    const [exercise] = await db
-      .insert(exercises)
-      .values({ ...data, isCustom: true, createdBy: userId })
-      .returning();
+    const [exercise] = await db.insert(exercises).values(data).returning();
 
     return c.json(exercise, 201);
   });

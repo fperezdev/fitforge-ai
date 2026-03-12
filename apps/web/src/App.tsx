@@ -6,6 +6,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { PlannerPage } from "@/pages/PlannerPage";
+import { PlanEditorPage } from "@/pages/PlanEditorPage";
 import { WorkoutPage } from "@/pages/WorkoutPage";
 import { ActiveSessionPage } from "@/pages/ActiveSessionPage";
 import { CardioPage } from "@/pages/CardioPage";
@@ -36,6 +37,7 @@ export function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/planner" element={<PlannerPage />} />
+              <Route path="/planner/plans/:id" element={<PlanEditorPage />} />
               <Route path="/workout" element={<WorkoutPage />} />
               <Route path="/workout/new" element={<WorkoutPage />} />
               <Route path="/workout/:id" element={<ActiveSessionPage />} />

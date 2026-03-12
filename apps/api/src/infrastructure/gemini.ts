@@ -101,6 +101,19 @@ const SYSTEM_PROMPT = `You are FitForge AI, an expert personal trainer and runni
 
 Your tone is direct, evidence-based, and encouraging. You give actionable advice.
 
+## Exercise model
+Each strength exercise has a name, primaryMuscle (required, exactly one value), and secondaryMuscles (optional array).
+Each muscle must be one of:
+  chest | upper_chest | lower_chest |
+  back | lats | upper_back | lower_back | traps |
+  anterior_deltoids | lateral_deltoids | posterior_deltoids |
+  biceps | triceps | forearms |
+  core | obliques |
+  glutes | quadriceps | hamstrings | calves | soleus | hip_flexors | adductors |
+  full_body | other
+
+Prefer exercises from the exercise library when possible. You may also suggest new exercises not in the library — they will be created automatically.
+
 When asked to create a workout plan, output it as a JSON block inside <plan>...</plan> tags with this structure:
 {
   "name": "Plan name",
@@ -110,24 +123,67 @@ When asked to create a workout plan, output it as a JSON block inside <plan>...<
       "week": 1,
       "days": [
         {
-          "day": "Monday",
-          "name": "Push A",
-          "exercises": [
-            {
-              "name": "Bench Press",
-              "sets": 4,
-              "repMin": 8,
-              "repMax": 12,
-              "restSeconds": 120
-            }
-          ]
+          "day": 1,
+          "workout": {
+            "name": "Push A",
+            "exercises": [
+              {
+                "name": "Bench Press",
+                "primaryMuscle": "chest",
+                "secondaryMuscles": ["anterior_deltoids", "triceps"],
+                "sets": 4, "repMin": 8, "repMax": 12, "restSeconds": 120, "rir": 2
+              }
+            ]
+          },
+          "cardio": {
+            "name": "Easy Run",
+            "exercises": [
+              { "name": "Easy Run", "zone": 2, "kilometers": 5 }
+            ]
+          }
+        },
+        {
+          "day": 2,
+          "cardio": {
+            "name": "Long Run",
+            "exercises": [
+              { "name": "Long Run", "zone": 3, "kilometers": 20 }
+            ]
+          }
+        },
+        {
+          "day": 3,
+          "rest": true,
+          "restNote": "Light walk or full rest"
         }
       ]
     }
   ]
 }
 
+Field rules:
+- "day": integer, 1-based day number within the week.
+- "workout": optional. Strength/hypertrophy block. Contains "name" and "exercises[]".
+  - Each exercise: name, primaryMuscle (required, exactly one value), secondaryMuscles (array, optional), sets (int), repMin (int), repMax (int), restSeconds (int, optional), rir (int 0–4, required).
+- "cardio": optional. Cardio block. Contains "name" and "exercises[]".
+  - Each exercise: name, zone (1–5, required), kilometers (required).
+- "rest": true for full rest days. No workout or cardio on rest days. Optional "restNote".
+- A day can have workout only, cardio only, both, or rest.
+- Weight exercises must NOT include zone/kilometers. Cardio exercises must NOT include sets/reps/rir/muscles.
+
 Always provide context around the plan with explanations. The <plan> block can be parsed by the app to save it directly.`;
+
+function formatExerciseLibrary(exercises: CoachContext["exercises"]): string {
+  if (exercises.length === 0) return "";
+  const lines = exercises.map(
+    (e) =>
+      `- ${e.name}: primary=${e.primaryMuscle}` +
+      (e.secondaryMuscles.length > 0
+        ? `, secondary=[${e.secondaryMuscles.join(", ")}]`
+        : "")
+  );
+  return `## Exercise Library\n${lines.join("\n")}`;
+}
 
 export async function streamCoachResponse(
   userMessage: string,
@@ -135,7 +191,7 @@ export async function streamCoachResponse(
   onChunk: (chunk: string) => void
 ): Promise<string> {
   const genAI = getGeminiClient();
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
   const contextStr = formatContext(context);
   const history = context.conversationHistory.slice(-10); // keep last 10 for token budget
@@ -143,7 +199,16 @@ export async function streamCoachResponse(
   const chat = model.startChat({
     systemInstruction: {
       role: "system",
-      parts: [{ text: SYSTEM_PROMPT + "\n\n## Current Athlete Data\n" + contextStr }],
+      parts: [
+        {
+          text:
+            SYSTEM_PROMPT +
+            "\n\n" +
+            formatExerciseLibrary(context.exercises) +
+            "\n\n## Current Athlete Data\n" +
+            contextStr,
+        },
+      ],
     },
     history: history.map((m) => ({
       role: m.role === "user" ? "user" : "model",

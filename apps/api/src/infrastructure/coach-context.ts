@@ -20,7 +20,7 @@ export async function buildCoachContext(
 ): Promise<CoachContext> {
   const db = getDb();
 
-  const [profile, sessions, cardio, prs, weights, goals, history] =
+  const [profile, sessions, cardio, prs, weights, goals, history, allExercises] =
     await Promise.all([
       // Profile
       db.query.userProfiles.findFirst({
@@ -87,6 +87,11 @@ export async function buildCoachContext(
         orderBy: [desc(coachMessages.createdAt)],
         limit: 20,
       }),
+
+      // All exercises (for AI prompt reference)
+      db.query.exercises.findMany({
+        orderBy: (ex, { asc }) => [asc(ex.name)],
+      }),
     ]);
 
   return {
@@ -132,5 +137,6 @@ export async function buildCoachContext(
       ...m,
       role: m.role as "user" | "assistant",
     })),
+    exercises: allExercises,
   };
 }

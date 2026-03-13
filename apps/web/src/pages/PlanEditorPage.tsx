@@ -2,6 +2,25 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  useDroppable,
+  DragOverlay,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   Layers,
   LayoutGrid,
   Check,
@@ -16,6 +35,7 @@ import {
   TrendingUp,
   Flame,
   Weight,
+  Trash,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -551,9 +571,11 @@ function DayCell({
   planId,
   micId,
   isLocked,
-  compact = false,
+  isDraggable = false,
+  isReordering = false,
   scheduledDate,
   onNavigateToDay,
+  isOverlay = false,
 }: {
   day: PlanDay;
   templates: Template[];
@@ -561,15 +583,31 @@ function DayCell({
   planId: string;
   micId: string;
   isLocked: boolean;
-  compact?: boolean;
+  isDraggable?: boolean;
+  isReordering?: boolean;
   scheduledDate?: string | null;
   onNavigateToDay?: () => void;
+  isOverlay?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
 
-  const hasStrength = day.type === "training" && day.workoutTemplateId;
-  const hasCardio = day.type === "training" && day.cardioTemplateId;
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: day.dayNumber, disabled: !isDraggable || isOverlay });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const hasStrength = day.type === "training" && !!day.workoutTemplateId;
+  const hasCardio = day.type === "training" && !!day.cardioTemplateId;
   const hasAny = hasStrength || hasCardio;
 
   const strengthName = hasStrength
@@ -593,7 +631,11 @@ function DayCell({
     },
   });
 
+  // Clicks on non-training days open the type toggle popover.
+  // Clicks on training days navigate into the day editor.
+  // We let dnd-kit handle the pointer — it fires onClick only when no drag occurred.
   const handleClick = () => {
+    if (isDragging || isReordering) return;
     if (day.type === "training") {
       onNavigateToDay?.();
     } else if (!isLocked) {
@@ -602,12 +644,17 @@ function DayCell({
   };
 
   return (
-    <div className="relative">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn("relative", isDragging && "opacity-30")}
+    >
       <button
+        {...(isDraggable ? { ...attributes, ...listeners } : {})}
         onClick={handleClick}
         className={cn(
-          "w-full rounded-lg border text-left transition-colors flex flex-col overflow-hidden",
-          compact ? "p-1.5 h-[72px]" : "p-2 h-[90px]",
+          "w-full rounded-lg border text-left transition-colors flex flex-col p-1.5 h-[60px] overflow-hidden",
+          isDraggable && "cursor-grab active:cursor-grabbing touch-none",
           hasAny
             ? "border-primary/30 bg-primary/5 hover:bg-primary/10"
             : day.type === "rest"
@@ -617,7 +664,7 @@ function DayCell({
         )}
         aria-label={`Day ${day.dayNumber}`}
       >
-        <span className="block text-[10px] text-muted-foreground mb-0.5">
+        <span className="block text-[10px] text-muted-foreground mb-0.5 leading-none">
           D{day.dayNumber}
           {scheduledDate && (
             <span className="block text-[9px] leading-tight opacity-70">
@@ -627,58 +674,27 @@ function DayCell({
         </span>
 
         {day.type !== "training" ? (
-          <span
-            className={cn(
-              "block text-muted-foreground leading-tight",
-              compact ? "text-[10px]" : "text-xs"
-            )}
-          >
+          <span className="block text-[10px] text-muted-foreground leading-tight">
             {DAY_TYPE_LABELS[day.type]}
           </span>
         ) : (
           <div className="space-y-0.5">
-            {strengthName ? (
-              <span
-                className={cn(
-                  "flex items-center gap-0.5 font-medium leading-tight text-primary",
-                  compact ? "text-[10px]" : "text-xs"
-                )}
-              >
-                <Dumbbell className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-                <span className="truncate">{strengthName}</span>
-              </span>
-            ) : (
-              <span
-                className={cn(
-                  "flex items-center gap-0.5 leading-tight text-muted-foreground/40",
-                  compact ? "text-[10px]" : "text-xs"
-                )}
-              >
-                <Dumbbell className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-                <span>No strength</span>
-              </span>
-            )}
-            {cardioName ? (
-              <span
-                className={cn(
-                  "flex items-center gap-0.5 font-medium leading-tight text-amber-600 dark:text-amber-400",
-                  compact ? "text-[10px]" : "text-xs"
-                )}
-              >
-                <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-                <span className="truncate">{cardioName}</span>
-              </span>
-            ) : (
-              <span
-                className={cn(
-                  "flex items-center gap-0.5 leading-tight text-muted-foreground/40",
-                  compact ? "text-[10px]" : "text-xs"
-                )}
-              >
-                <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-                <span>No cardio</span>
-              </span>
-            )}
+            <span
+              className={cn(
+                "block text-[10px] font-medium leading-tight truncate",
+                hasStrength ? "text-primary" : "text-muted-foreground/30"
+              )}
+            >
+              {strengthName ?? "No Strength"}
+            </span>
+            <span
+              className={cn(
+                "block text-[10px] font-medium leading-tight truncate",
+                hasCardio ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/30"
+              )}
+            >
+              {cardioName ?? "No Cardio"}
+            </span>
           </div>
         )}
 
@@ -719,6 +735,28 @@ function DayCell({
   );
 }
 
+// ─── Delete Drop Zone ─────────────────────────────────────────────────────────
+
+function DeleteZone({ canDelete }: { canDelete: boolean }) {
+  const { isOver, setNodeRef } = useDroppable({ id: "delete-zone", disabled: !canDelete });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "flex items-center justify-center gap-2 rounded-xl border-2 border-dashed py-3 transition-all duration-200",
+        isOver
+          ? "border-destructive bg-destructive/10 text-destructive scale-[1.02]"
+          : "border-destructive/40 text-destructive/60",
+        !canDelete && "opacity-40"
+      )}
+    >
+      <Trash className="h-4 w-4" />
+      <span className="text-sm font-medium">Drop here to delete day</span>
+    </div>
+  );
+}
+
 // ─── Plan View (mesocycle grid) ───────────────────────────────────────────────
 
 function PlanView({
@@ -735,8 +773,27 @@ function PlanView({
   const queryClient = useQueryClient();
   const [editingMcId, setEditingMcId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [activeId, setActiveId] = useState<number | null>(null);
+
+  // Local day order — only committed to the server on Save
+  const canonicalOrder = Array.from({ length: plan.microcycleLength }, (_, i) => i + 1);
+  const [isReordering, setIsReordering] = useState(false);
+  const [localDayOrder, setLocalDayOrder] = useState<number[]>(canonicalOrder);
+  // Holds the saved order while the refetch is in-flight, preventing flicker
+  const [pendingOrder, setPendingOrder] = useState<number[] | null>(null);
+
+  // Reset local order whenever the server data changes (refetch completed)
+  useEffect(() => {
+    setLocalDayOrder(Array.from({ length: plan.microcycleLength }, (_, i) => i + 1));
+    setPendingOrder(null);
+  }, [plan.microcycleLength, plan.id, plan.microcycles]);
 
   const isLocked = plan.status === "completed";
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+  );
 
   const renameMutation = useMutation({
     mutationFn: ({ mcId, name }: { mcId: string; name: string }) =>
@@ -762,135 +819,262 @@ function PlanView({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
   });
 
-  const deleteLastDayMutation = useMutation({
-    mutationFn: () => api.delete(`/plans/${plan.id}/days/last`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
+  const deleteDayMutation = useMutation({
+    mutationFn: (dayNumber: number) => api.delete(`/plans/${plan.id}/days/${dayNumber}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      setIsReordering(false);
+    },
+  });
+
+  const reorderDaysMutation = useMutation({
+    mutationFn: (order: number[]) =>
+      api.patch(`/plans/${plan.id}/days/reorder`, { order }),
+    onMutate: (order: number[]) => {
+      // Immediately exit reorder mode and hold the saved order so the grid
+      // doesn't flicker back to the stale canonical order during the refetch.
+      setPendingOrder(order);
+      setIsReordering(false);
+    },
+    onError: () => {
+      // Roll back: clear pending and re-enter reorder mode so the user can retry
+      setPendingOrder(null);
+      setIsReordering(true);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+    },
   });
 
   const canDeleteWeek = plan.microcycles.length > 1;
-  const canDeleteDay = plan.microcycleLength > 1;
+  const canDeleteDay = localDayOrder.length > 1;
+  // Priority: reordering → use localDayOrder; saving in-flight → use pendingOrder; else canonical
+  const dayOrder = isReordering ? localDayOrder : (pendingOrder ?? canonicalOrder);
+
+  const handleCancelReorder = () => {
+    setIsReordering(false);
+    setLocalDayOrder(canonicalOrder);
+    setPendingOrder(null);
+  };
+
+  const handleSaveReorder = () => {
+    reorderDaysMutation.mutate(localDayOrder);
+  };
+
+  // Pick any microcycle's day data for the drag overlay (first week is fine)
+  const firstMc = plan.microcycles[0];
+  const activeDayStub = activeId != null
+    ? (firstMc?.days.find((d) => d.dayNumber === activeId) ?? {
+        id: `stub-overlay-${activeId}`,
+        planMicrocycleId: firstMc?.id ?? "",
+        dayNumber: activeId,
+        type: "training" as DayType,
+        workoutTemplateId: null,
+        workoutTemplate: null,
+        cardioTemplateId: null,
+        cardioTemplate: null,
+        notes: null,
+      })
+    : null;
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as number);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    if (over.id === "delete-zone" && canDeleteDay) {
+      deleteDayMutation.mutate(active.id as number);
+      return;
+    }
+
+    if (active.id !== over.id) {
+      const oldIndex = localDayOrder.indexOf(active.id as number);
+      const newIndex = localDayOrder.indexOf(over.id as number);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        setLocalDayOrder(arrayMove(localDayOrder, oldIndex, newIndex));
+      }
+    }
+  };
 
   return (
-    <div className="space-y-3">
-      {plan.microcycles.map((mc) => {
-        const assignedCount = mc.days.filter(
-          (d) => d.type !== "training" || d.workoutTemplateId || d.cardioTemplateId
-        ).length;
-        const totalDays = plan.microcycleLength;
-        const complete = assignedCount === totalDays;
-
-        return (
-          <div key={mc.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                {editingMcId === mc.id ? (
-                  <input
-                    autoFocus
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onBlur={() => renameMutation.mutate({ mcId: mc.id, name: editingName })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") renameMutation.mutate({ mcId: mc.id, name: editingName });
-                      if (e.key === "Escape") setEditingMcId(null);
-                    }}
-                    className="h-7 rounded-md border border-border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                ) : (
-                  <button
-                    className="text-sm font-semibold hover:text-primary transition-colors"
-                    onClick={() => {
-                      if (isLocked) return;
-                      setEditingMcId(mc.id);
-                      setEditingName(mc.name ?? `Week ${mc.position}`);
-                    }}
-                  >
-                    {mc.name ?? `Week ${mc.position}`}
-                  </button>
-                )}
-                {complete && <Badge variant="success">Complete</Badge>}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">
-                  {assignedCount}/{totalDays} days set
-                </span>
-                {!isLocked && canDeleteWeek && (
-                  <button
-                    onClick={() => deleteWeekMutation.mutate(mc.id)}
-                    disabled={deleteWeekMutation.isPending}
-                    aria-label={`Delete ${mc.name ?? `Week ${mc.position}`}`}
-                    className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div
-              className="grid gap-1"
-              style={{ gridTemplateColumns: `repeat(${plan.microcycleLength}, minmax(0, 1fr))` }}
-            >
-              {Array.from({ length: plan.microcycleLength }, (_, i) => i + 1).map((d) => {
-                const day = mc.days.find((pd) => pd.dayNumber === d) ?? {
-                  id: `stub-${mc.id}-${d}`,
-                  planMicrocycleId: mc.id,
-                  dayNumber: d,
-                  type: "training" as DayType,
-                  workoutTemplateId: null,
-                  workoutTemplate: null,
-                  cardioTemplateId: null,
-                  cardioTemplate: null,
-                  notes: null,
-                };
-                return (
-                  <DayCell
-                    key={`${mc.id}-${d}`}
-                    day={day}
-                    templates={templates}
-                    cardioTemplates={cardioTemplates}
-                    planId={plan.id}
-                    micId={mc.id}
-                    isLocked={isLocked}
-                    compact
-                    scheduledDate={
-                      plan.status === "active"
-                        ? getPlanSlotDate(plan, mc.position - 1, d - 1)
-                        : null
-                    }
-                    onNavigateToDay={() => onNavigateToDay(mc.position, d)}
-                  />
-                );
-              })}
-            </div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="space-y-3">
+        {/* Reorder toolbar */}
+        {!isLocked && (
+          <div className="flex items-center gap-2">
+            {isReordering || reorderDaysMutation.isPending ? (
+              <>
+                <Button
+                  size="sm"
+                  loading={reorderDaysMutation.isPending}
+                  onClick={handleSaveReorder}
+                >
+                  <Save className="h-3.5 w-3.5 mr-1" />
+                  Save order
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancelReorder}
+                  disabled={reorderDaysMutation.isPending}
+                >
+                  <X className="h-3.5 w-3.5 mr-1" />
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setIsReordering(true)}>
+                <Pencil className="h-3.5 w-3.5 mr-1" />
+                Edit order
+              </Button>
+            )}
           </div>
-        );
-      })}
+        )}
 
-      {!isLocked && (
-        <div className="flex flex-wrap gap-2 pt-1">
-          <Button variant="outline" size="sm" loading={addWeekMutation.isPending} onClick={() => addWeekMutation.mutate()}>
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Add week
-          </Button>
-          <Button variant="outline" size="sm" loading={addDayMutation.isPending} onClick={() => addDayMutation.mutate()}>
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Add day to all weeks
-          </Button>
-          {canDeleteDay && (
-            <Button
-              variant="outline"
-              size="sm"
-              loading={deleteLastDayMutation.isPending}
-              onClick={() => deleteLastDayMutation.mutate()}
-              className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1" />
-              Remove last day
+        <SortableContext items={dayOrder} strategy={horizontalListSortingStrategy}>
+          {plan.microcycles.map((mc) => {
+            const assignedCount = mc.days.filter(
+              (d) => d.type !== "training" || d.workoutTemplateId || d.cardioTemplateId
+            ).length;
+            const totalDays = plan.microcycleLength;
+            const complete = assignedCount === totalDays;
+
+            return (
+              <div key={mc.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    {editingMcId === mc.id ? (
+                      <input
+                        autoFocus
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onBlur={() => renameMutation.mutate({ mcId: mc.id, name: editingName })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") renameMutation.mutate({ mcId: mc.id, name: editingName });
+                          if (e.key === "Escape") setEditingMcId(null);
+                        }}
+                        className="h-7 rounded-md border border-border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    ) : (
+                      <button
+                        className="text-sm font-semibold hover:text-primary transition-colors"
+                        onClick={() => {
+                          if (isLocked) return;
+                          setEditingMcId(mc.id);
+                          setEditingName(mc.name ?? `Week ${mc.position}`);
+                        }}
+                      >
+                        {mc.name ?? `Week ${mc.position}`}
+                      </button>
+                    )}
+                    {complete && <Badge variant="success">Complete</Badge>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {assignedCount}/{totalDays} days set
+                    </span>
+                    {!isLocked && canDeleteWeek && (
+                      <button
+                        onClick={() => deleteWeekMutation.mutate(mc.id)}
+                        disabled={deleteWeekMutation.isPending}
+                        aria-label={`Delete ${mc.name ?? `Week ${mc.position}`}`}
+                        className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <div className="flex gap-1" style={{ minWidth: "max-content" }}>
+                    {dayOrder.map((d) => {
+                      const day = mc.days.find((pd) => pd.dayNumber === d) ?? {
+                        id: `stub-${mc.id}-${d}`,
+                        planMicrocycleId: mc.id,
+                        dayNumber: d,
+                        type: "training" as DayType,
+                        workoutTemplateId: null,
+                        workoutTemplate: null,
+                        cardioTemplateId: null,
+                        cardioTemplate: null,
+                        notes: null,
+                      };
+                      return (
+                        <div key={`${mc.id}-${d}`} className="w-24 shrink-0">
+                          <DayCell
+                            day={day}
+                            templates={templates}
+                            cardioTemplates={cardioTemplates}
+                            planId={plan.id}
+                            micId={mc.id}
+                            isLocked={isLocked}
+                            isDraggable={isReordering && !isLocked}
+                            isReordering={isReordering}
+                            scheduledDate={
+                              plan.status === "active"
+                                ? getPlanSlotDate(plan, mc.position - 1, d - 1)
+                                : null
+                            }
+                            onNavigateToDay={() => onNavigateToDay(mc.position, d)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </SortableContext>
+
+        {/* Delete drop zone — only visible while reordering and dragging */}
+        {isReordering && activeId != null && (
+          <DeleteZone canDelete={canDeleteDay} />
+        )}
+
+        {!isLocked && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button variant="outline" size="sm" loading={addWeekMutation.isPending} onClick={() => addWeekMutation.mutate()}>
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add week
             </Button>
-          )}
-        </div>
-      )}
-    </div>
+            <Button variant="outline" size="sm" loading={addDayMutation.isPending} onClick={() => addDayMutation.mutate()}>
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              Add day to all weeks
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Drag overlay — renders the ghost cell while dragging */}
+      <DragOverlay dropAnimation={null}>
+        {activeDayStub && (
+          <div className="w-24">
+            <DayCell
+              day={activeDayStub}
+              templates={templates}
+              cardioTemplates={cardioTemplates}
+              planId={plan.id}
+              micId={firstMc?.id ?? ""}
+              isLocked={false}
+              isDraggable={false}
+              isOverlay
+              scheduledDate={null}
+            />
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }
 

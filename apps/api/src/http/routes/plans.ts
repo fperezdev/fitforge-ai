@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, ilike, ne, lt, sum, inArray } from "drizzle-orm";
+import { eq, and, ilike, ne, lt, sum, inArray, gt, sql } from "drizzle-orm";
 import {
   trainingPlans,
   planMicrocycles,
@@ -962,6 +962,102 @@ export const planRoutes = new Hono()
 
     return c.json(updated);
   })
+
+  // Delete any day column by dayNumber — shifts higher days down, decrements microcycleLength
+  .delete("/:id/days/:dayNumber", async (c) => {
+    const userId = getUserId(c);
+    const { id, dayNumber: dayNumberParam } = c.req.param();
+    const dayNumber = parseInt(dayNumberParam, 10);
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.id, id), eq(trainingPlans.userId, userId)),
+      with: { microcycles: true },
+    });
+    if (!plan) return c.json({ error: "Plan not found" }, 404);
+    if (plan.microcycleLength <= 1)
+      return c.json({ error: "Cannot delete the only day" }, 400);
+    if (dayNumber < 1 || dayNumber > plan.microcycleLength)
+      return c.json({ error: "Day number out of range" }, 400);
+
+    // Delete the target day from every microcycle, then shift higher dayNumbers down by 1
+    for (const mc of plan.microcycles) {
+      await db
+        .delete(planDays)
+        .where(
+          and(eq(planDays.planMicrocycleId, mc.id), eq(planDays.dayNumber, dayNumber))
+        );
+      await db
+        .update(planDays)
+        .set({ dayNumber: sql`${planDays.dayNumber} - 1` })
+        .where(
+          and(eq(planDays.planMicrocycleId, mc.id), gt(planDays.dayNumber, dayNumber))
+        );
+    }
+
+    const [updated] = await db
+      .update(trainingPlans)
+      .set({ microcycleLength: plan.microcycleLength - 1, updatedAt: new Date() })
+      .where(eq(trainingPlans.id, id))
+      .returning();
+
+    return c.json(updated);
+  })
+
+  // Reorder days across all weeks simultaneously — accepts new order as array of current dayNumbers
+  .patch(
+    "/:id/days/reorder",
+    zValidator("json", z.object({ order: z.array(z.number().int().min(1)) })),
+    async (c) => {
+      const userId = getUserId(c);
+      const { id } = c.req.param();
+      const { order } = c.req.valid("json");
+      const db = getDb();
+
+      const plan = await db.query.trainingPlans.findFirst({
+        where: and(eq(trainingPlans.id, id), eq(trainingPlans.userId, userId)),
+        with: { microcycles: true },
+      });
+      if (!plan) return c.json({ error: "Plan not found" }, 404);
+      if (order.length !== plan.microcycleLength)
+        return c.json({ error: "Order length must match microcycleLength" }, 400);
+
+      // Build mapping: oldDayNumber → newPosition (1-based index in new order)
+      // order[i] = old day number that should now be at position i+1
+      const mapping = new Map<number, number>();
+      order.forEach((oldDay, idx) => mapping.set(oldDay, idx + 1));
+
+      // Only process days that actually change position
+      const changedPairs = [...mapping.entries()].filter(([old, newPos]) => old !== newPos);
+      if (changedPairs.length === 0) return c.json({ success: true });
+
+      // Use a large temp offset so phase-1 values never collide with real day numbers
+      const offset = 10_000;
+
+      for (const mc of plan.microcycles) {
+        // Phase 1: move changed rows to temp values (avoids unique-constraint collisions)
+        for (const [oldDay, newPos] of changedPairs) {
+          await db
+            .update(planDays)
+            .set({ dayNumber: oldDay + offset })
+            .where(
+              and(eq(planDays.planMicrocycleId, mc.id), eq(planDays.dayNumber, oldDay))
+            );
+        }
+        // Phase 2: settle each temp row to its final position
+        for (const [oldDay, newPos] of changedPairs) {
+          await db
+            .update(planDays)
+            .set({ dayNumber: newPos })
+            .where(
+              and(eq(planDays.planMicrocycleId, mc.id), eq(planDays.dayNumber, oldDay + offset))
+            );
+        }
+      }
+
+      return c.json({ success: true });
+    }
+  )
 
   // Update microcycle name
   .patch("/:id/microcycles/:micId", async (c) => {

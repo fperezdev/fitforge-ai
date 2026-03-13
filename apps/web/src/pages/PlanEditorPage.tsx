@@ -606,8 +606,8 @@ function DayCell({
       <button
         onClick={handleClick}
         className={cn(
-          "w-full rounded-lg border text-left transition-colors",
-          compact ? "p-1.5 min-h-[52px]" : "p-2 min-h-[68px]",
+          "w-full rounded-lg border text-left transition-colors flex flex-col overflow-hidden",
+          compact ? "p-1.5 h-[72px]" : "p-2 h-[90px]",
           hasAny
             ? "border-primary/30 bg-primary/5 hover:bg-primary/10"
             : day.type === "rest"
@@ -635,9 +635,9 @@ function DayCell({
           >
             {DAY_TYPE_LABELS[day.type]}
           </span>
-        ) : hasStrength || hasCardio ? (
+        ) : (
           <div className="space-y-0.5">
-            {strengthName && (
+            {strengthName ? (
               <span
                 className={cn(
                   "flex items-center gap-0.5 font-medium leading-tight text-primary",
@@ -647,8 +647,18 @@ function DayCell({
                 <Dumbbell className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
                 <span className="truncate">{strengthName}</span>
               </span>
+            ) : (
+              <span
+                className={cn(
+                  "flex items-center gap-0.5 leading-tight text-muted-foreground/40",
+                  compact ? "text-[10px]" : "text-xs"
+                )}
+              >
+                <Dumbbell className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+                <span>No strength</span>
+              </span>
             )}
-            {cardioName && (
+            {cardioName ? (
               <span
                 className={cn(
                   "flex items-center gap-0.5 font-medium leading-tight text-amber-600 dark:text-amber-400",
@@ -658,17 +668,18 @@ function DayCell({
                 <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
                 <span className="truncate">{cardioName}</span>
               </span>
+            ) : (
+              <span
+                className={cn(
+                  "flex items-center gap-0.5 leading-tight text-muted-foreground/40",
+                  compact ? "text-[10px]" : "text-xs"
+                )}
+              >
+                <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+                <span>No cardio</span>
+              </span>
             )}
           </div>
-        ) : (
-          <span
-            className={cn(
-              "block text-muted-foreground/60 leading-tight",
-              compact ? "text-[10px]" : "text-xs"
-            )}
-          >
-            + assign
-          </span>
         )}
 
         {isLocked && (
@@ -1237,6 +1248,26 @@ function DayView({
           )}
         </div>
 
+        {/* Day type toggle — always visible while editing */}
+        {isEditing && (
+          <div className="flex gap-1">
+            {(["training", "rest"] as DayType[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => { setDayType(t); markDirty(); }}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-medium border transition-colors",
+                  dayType === t
+                    ? DAY_TYPE_COLORS[t] + " ring-1 ring-inset ring-current"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {DAY_TYPE_LABELS[t]}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Content */}
         {(isEditing ? dayType : dayData.type) === "rest" ? (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-center">
@@ -1244,26 +1275,6 @@ function DayView({
           </div>
         ) : (
           <div className="space-y-5">
-            {/* Day type toggle — only visible while editing */}
-            {isEditing && (
-              <div className="flex gap-1">
-                {(["training", "rest"] as DayType[]).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => { setDayType(t); markDirty(); }}
-                    className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-medium border transition-colors",
-                      dayType === t
-                        ? DAY_TYPE_COLORS[t] + " ring-1 ring-inset ring-current"
-                        : "border-border text-muted-foreground hover:bg-muted"
-                    )}
-                  >
-                    {DAY_TYPE_LABELS[t]}
-                  </button>
-                ))}
-              </div>
-            )}
-
             {/* Strength box */}
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
@@ -1271,6 +1282,9 @@ function DayView({
                 <span className="text-xs font-semibold text-primary uppercase tracking-wide">
                   Strength
                 </span>
+                {strengthTemplate?.name && (
+                  <span className="text-xs text-muted-foreground">— {strengthTemplate.name}</span>
+                )}
               </div>
               {!isEditing ? (
                 <StrengthReadView rows={strengthRows} />
@@ -1289,6 +1303,9 @@ function DayView({
                 <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
                   Cardio
                 </span>
+                {cardioTemplate?.name && (
+                  <span className="text-xs text-muted-foreground">— {cardioTemplate.name}</span>
+                )}
               </div>
               {!isEditing ? (
                 <CardioReadView rows={cardioRows} />
@@ -1477,6 +1494,7 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
       setStartDate(todayISO());
       queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
       queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
 

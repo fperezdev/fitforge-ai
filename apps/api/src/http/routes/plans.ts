@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, ilike, ne, lt, sum } from "drizzle-orm";
+import { eq, and, ilike, ne, lt, sum, inArray } from "drizzle-orm";
 import {
   trainingPlans,
   planMicrocycles,
@@ -15,6 +15,7 @@ import {
   workoutSessions,
   exerciseEntries,
   exerciseSets,
+  coachConversations,
 } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
 import { authMiddleware, getUserId } from "../middleware/auth.js";
@@ -575,6 +576,9 @@ export const planRoutes = new Hono()
     const userId = getUserId(c);
     const { id } = c.req.param();
     const db = getDb();
+
+    // Step 1: fetch plan skeleton — avoid deeply-nested alias bug in Drizzle
+    // by NOT including `exercise` inside `templateExercises` here.
     const plan = await db.query.trainingPlans.findFirst({
       where: and(eq(trainingPlans.id, id), eq(trainingPlans.userId, userId)),
       with: {
@@ -584,8 +588,12 @@ export const planRoutes = new Hono()
             days: {
               orderBy: (pd, { asc }) => [asc(pd.dayNumber)],
               with: {
-                workoutTemplate: true,
-                cardioTemplate: true,
+                workoutTemplate: {
+                  with: { templateExercises: true },
+                },
+                cardioTemplate: {
+                  with: { cardioTemplateExercises: true },
+                },
               },
             },
           },
@@ -593,7 +601,49 @@ export const planRoutes = new Hono()
       },
     });
     if (!plan) return c.json({ error: "Plan not found" }, 404);
-    return c.json(plan);
+
+    // Step 2: collect all exerciseIds referenced by template exercises,
+    // fetch them in one query, then stitch into the plan response.
+    const allExerciseIds = new Set<string>();
+    for (const mc of plan.microcycles) {
+      for (const day of mc.days) {
+        if (day.workoutTemplate) {
+          for (const te of day.workoutTemplate.templateExercises) {
+            allExerciseIds.add(te.exerciseId);
+          }
+        }
+      }
+    }
+
+    const exerciseMap: Record<string, Record<string, unknown>> = {};
+    if (allExerciseIds.size > 0) {
+      const rows = await db
+        .select()
+        .from(exercises)
+        .where(inArray(exercises.id, [...allExerciseIds]));
+      for (const ex of rows) exerciseMap[ex.id] = ex;
+    }
+
+    // Attach exercise objects to each templateExercise
+    const enriched = {
+      ...plan,
+      microcycles: plan.microcycles.map((mc) => ({
+        ...mc,
+        days: mc.days.map((day) => ({
+          ...day,
+          workoutTemplate: day.workoutTemplate
+            ? {
+                ...day.workoutTemplate,
+                templateExercises: day.workoutTemplate.templateExercises.map(
+                  (te) => ({ ...te, exercise: exerciseMap[te.exerciseId] ?? null })
+                ),
+              }
+            : null,
+        })),
+      })),
+    };
+
+    return c.json(enriched);
   })
 
   // Create plan — auto-creates microcycles and empty day stubs
@@ -669,6 +719,19 @@ export const planRoutes = new Hono()
         .returning();
 
       if (!updated) return c.json({ error: "Plan not found" }, 404);
+
+      // Close all mode="plan" coach conversations for this user —
+      // a plan is now active so those conversations are superseded.
+      await db
+        .update(coachConversations)
+        .set({ status: "closed", updatedAt: new Date() })
+        .where(
+          and(
+            eq(coachConversations.userId, userId),
+            eq(coachConversations.mode, "plan")
+          )
+        );
+
       return c.json(updated);
     }
 

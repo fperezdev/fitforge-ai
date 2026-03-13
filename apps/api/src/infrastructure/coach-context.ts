@@ -1,4 +1,4 @@
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { getDb } from "./db.js";
 import {
   userProfiles,
@@ -11,6 +11,7 @@ import {
   weightEntries,
   bodyGoals,
   coachMessages,
+  coachConversations,
 } from "@fitforge/db";
 import type { CoachContext } from "../domain/types.js";
 
@@ -20,8 +21,13 @@ export async function buildCoachContext(
 ): Promise<CoachContext> {
   const db = getDb();
 
-  const [profile, sessions, cardio, prs, weights, goals, history, allExercises] =
+  const [conversation, profile, sessions, cardio, prs, weights, goals, history, allExercises] =
     await Promise.all([
+      // Conversation (for mode)
+      db.query.coachConversations.findFirst({
+        where: eq(coachConversations.id, conversationId),
+      }),
+
       // Profile
       db.query.userProfiles.findFirst({
         where: eq(userProfiles.userId, userId),
@@ -95,6 +101,7 @@ export async function buildCoachContext(
     ]);
 
   return {
+    conversationMode: (conversation?.mode ?? null) as "advice" | "plan" | null,
     profile: profile
       ? {
           ...profile,
@@ -102,6 +109,7 @@ export async function buildCoachContext(
           unitPreference: (profile.unitPreference ?? "metric") as
             | "metric"
             | "imperial",
+          injuries: profile.injuries ?? null,
         }
       : null,
     recentSessions: sessions.map((s: any) => ({

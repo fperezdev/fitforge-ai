@@ -29,18 +29,51 @@ export const coachRoutes = new Hono()
 
   .post(
     "/conversations",
-    zValidator("json", z.object({ title: z.string().optional() })),
+    zValidator(
+      "json",
+      z.object({
+        title: z.string().optional(),
+        mode: z.enum(["advice", "plan"]).optional(),
+      })
+    ),
     async (c) => {
       const userId = getUserId(c);
-      const { title } = c.req.valid("json");
+      const { title, mode } = c.req.valid("json");
       const db = getDb();
 
       const [conversation] = await db
         .insert(coachConversations)
-        .values({ userId, title: title ?? "New conversation" })
+        .values({ userId, title: title ?? "New conversation", mode: mode ?? null })
         .returning();
 
       return c.json(conversation, 201);
+    }
+  )
+
+  .patch(
+    "/conversations/:id",
+    zValidator("json", z.object({ status: z.enum(["active", "closed"]) })),
+    async (c) => {
+      const userId = getUserId(c);
+      const { id } = c.req.param();
+      const { status } = c.req.valid("json");
+      const db = getDb();
+
+      const conversation = await db.query.coachConversations.findFirst({
+        where: and(
+          eq(coachConversations.id, id),
+          eq(coachConversations.userId, userId)
+        ),
+      });
+      if (!conversation) return c.json({ error: "Conversation not found" }, 404);
+
+      const [updated] = await db
+        .update(coachConversations)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(coachConversations.id, id))
+        .returning();
+
+      return c.json(updated);
     }
   )
 
@@ -85,6 +118,11 @@ export const coachRoutes = new Hono()
       });
       if (!conversation) return c.json({ error: "Conversation not found" }, 404);
 
+      // Block messages on closed conversations
+      if (conversation.status === "closed") {
+        return c.json({ error: "This conversation is closed." }, 403);
+      }
+
       // Save user message
       await db.insert(coachMessages).values({
         conversationId: id,
@@ -104,7 +142,7 @@ export const coachRoutes = new Hono()
         })
         .returning();
 
-      // Build context
+      // Build context (includes conversation mode)
       const context = await buildCoachContext(userId, id);
 
       // Stream response

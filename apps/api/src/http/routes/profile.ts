@@ -17,6 +17,7 @@ const updateProfileSchema = z.object({
     .enum(["beginner", "intermediate", "advanced"])
     .optional()
     .nullable(),
+  injuries: z.string().optional().nullable(),
 });
 
 const createGoalSchema = z.object({

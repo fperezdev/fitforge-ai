@@ -10,6 +10,7 @@ export interface UserProfile {
   unitPreference: "metric" | "imperial";
   fitnessGoal: string | null;
   experienceLevel: string | null;
+  injuries: string | null;
 }
 
 export type Muscle =
@@ -150,6 +151,8 @@ export interface CoachConversation {
   id: string;
   userId: string;
   title: string | null;
+  mode: "advice" | "plan" | null;
+  status: "active" | "closed";
   createdAt: string;
   updatedAt: string;
 }
@@ -165,6 +168,7 @@ export interface CoachMessage {
 // Context fed to the AI coach
 export interface CoachContext {
   profile: UserProfile | null;
+  conversationMode: "advice" | "plan" | null;
   recentSessions: WorkoutSession[];
   recentCardio: CardioSession[];
   personalRecords: PersonalRecord[];

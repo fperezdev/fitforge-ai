@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { User, Ruler, Target, Save, ChevronDown } from "lucide-react";
+import { User, Ruler, Target, Save, ChevronDown, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ interface UserProfile {
   unitPreference: "metric" | "imperial";
   fitnessGoal: string | null;
   experienceLevel: string | null;
+  injuries: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,6 +39,7 @@ const profileSchema = z.object({
   unitPreference: z.enum(["metric", "imperial"]),
   fitnessGoal: z.string().optional(),
   experienceLevel: z.string().optional(),
+  injuries: z.string().optional(),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -115,6 +117,7 @@ export function ProfilePage() {
           unitPreference: profile.unitPreference,
           fitnessGoal: profile.fitnessGoal ?? "",
           experienceLevel: profile.experienceLevel ?? "",
+          injuries: profile.injuries ?? "",
         }
       : undefined,
   });
@@ -130,6 +133,7 @@ export function ProfilePage() {
         gender: data.gender || null,
         fitnessGoal: data.fitnessGoal || null,
         experienceLevel: data.experienceLevel || null,
+        injuries: data.injuries || null,
       }),
     onSuccess: (updated) => {
       qc.setQueryData(["me/profile"], updated);
@@ -141,6 +145,7 @@ export function ProfilePage() {
         unitPreference: updated.unitPreference,
         fitnessGoal: updated.fitnessGoal ?? "",
         experienceLevel: updated.experienceLevel ?? "",
+        injuries: updated.injuries ?? "",
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -297,9 +302,35 @@ export function ProfilePage() {
           </CardContent>
         </Card>
 
+        {/* Injuries */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldAlert className="h-4 w-4" />
+              Injuries &amp; Limitations
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="injuries" className="text-sm font-medium text-foreground">
+                Injuries / Physical Limitations
+              </label>
+              <textarea
+                id="injuries"
+                {...register("injuries")}
+                rows={3}
+                placeholder="e.g. Lower back pain, left shoulder impingement…"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              />
+              <p className="text-xs text-muted-foreground">
+                This information helps the AI coach tailor advice and avoid exercises that may aggravate your condition.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Save */}
-        <div className="flex items-center justify-between">
-          {mutation.isError && (
+        <div className="flex items-center justify-between">          {mutation.isError && (
             <p className="text-sm text-destructive">
               {(mutation.error as Error).message}
             </p>

@@ -65,6 +65,7 @@ export const userProfiles = pgTable("user_profiles", {
     .default("metric"),
   fitnessGoal: varchar("fitness_goal", { length: 100 }),
   experienceLevel: varchar("experience_level", { length: 50 }),
+  injuries: text("injuries"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -332,6 +333,8 @@ export const coachConversations = pgTable("coach_conversations", {
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
   title: varchar("title", { length: 255 }),
+  mode: varchar("mode", { length: 20 }), // 'advice' | 'plan'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'closed'
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

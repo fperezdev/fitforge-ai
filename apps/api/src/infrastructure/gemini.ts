@@ -12,12 +12,22 @@ function formatContext(ctx: CoachContext): string {
 
   if (ctx.profile) {
     const p = ctx.profile;
-    parts.push(`## Athlete Profile
+    const age = p.dateOfBirth
+      ? Math.floor(
+          (Date.now() - new Date(p.dateOfBirth).getTime()) /
+            (1000 * 60 * 60 * 24 * 365.25)
+        )
+      : null;
+    parts.push(
+      `## Athlete Profile
 - Name: ${p.displayName}
+- Age: ${age !== null ? `${age} years` : "unknown"}
 - Experience: ${p.experienceLevel ?? "unknown"}
 - Goal: ${p.fitnessGoal ?? "not specified"}
 - Height: ${p.heightCm ? `${p.heightCm} cm` : "unknown"}
-- Units: ${p.unitPreference}`);
+- Units: ${p.unitPreference}
+- Injuries / Limitations: ${p.injuries?.trim() || "none reported"}`
+    );
   }
 
   if (ctx.weightTrend.length > 0) {
@@ -57,7 +67,7 @@ function formatContext(ctx: CoachContext): string {
   if (ctx.recentSessions.length > 0) {
     parts.push(`## Recent Workout Sessions (last ${ctx.recentSessions.length})`);
     ctx.recentSessions.forEach((s) => {
-      const date = s.completedAt?.split("T")[0] ?? s.startedAt.split("T")[0];
+      const date = (s.completedAt ? new Date(s.completedAt).toISOString() : new Date(s.startedAt).toISOString()).split("T")[0];
       const exerciseSummary =
         s.entries
           ?.map((e) => {
@@ -79,7 +89,7 @@ function formatContext(ctx: CoachContext): string {
   if (ctx.recentCardio.length > 0) {
     parts.push(`## Recent Cardio Sessions`);
     ctx.recentCardio.forEach((c) => {
-      const date = c.completedAt?.split("T")[0] ?? c.startedAt.split("T")[0];
+      const date = (c.completedAt ? new Date(c.completedAt).toISOString() : new Date(c.startedAt).toISOString()).split("T")[0];
       const dist = c.distanceMeters
         ? `${(c.distanceMeters / 1000).toFixed(2)} km`
         : "?";
@@ -93,9 +103,9 @@ function formatContext(ctx: CoachContext): string {
   return parts.join("\n\n");
 }
 
-const SYSTEM_PROMPT = `You are FitForge AI, an expert personal trainer and running coach with deep knowledge of:
+const BASE_SYSTEM_PROMPT = `You are FitForge AI, an expert personal trainer and running coach with deep knowledge of:
 - Hypertrophy training (progressive overload, volume, RIR, exercise selection, periodisation)
-- Running training (aerobic base, tempo runs, intervals, pace zones, race preparation)
+- Running and cardio training (aerobic base, tempo runs, intervals, pace zones, race preparation)
 - Nutrition basics for body recomposition
 - Recovery, deload, and injury prevention
 
@@ -173,6 +183,21 @@ Field rules:
 
 Always provide context around the plan with explanations. The <plan> block can be parsed by the app to save it directly.`;
 
+const MODE_INSTRUCTIONS: Record<"advice" | "plan", string> = {
+  advice: `
+## Session Mode: Training Advice
+This conversation is strictly for training advice — hypertrophy and cardio topics only.
+If the user asks about anything unrelated to training (nutrition beyond the basics, medical advice, lifestyle, general topics, etc.), politely decline and redirect them to ask a training-related question.
+Do NOT generate full workout plans in this mode — if the user asks for a plan, tell them to start a new "Plan Making" conversation.`,
+  plan: `
+## Session Mode: Plan Making
+This conversation is strictly for creating and refining a training plan.
+Only discuss the plan itself: exercise selection, structure, volume, progression, and adjustments.
+If the user asks about anything unrelated to the training plan, politely decline and redirect them.
+When you generate the plan, always wrap it in <plan>...</plan> tags as specified above.
+After the plan is delivered, the user may ask for changes — apply them and output a full updated plan in <plan>...</plan> tags each time.`,
+};
+
 function formatExerciseLibrary(exercises: CoachContext["exercises"]): string {
   if (exercises.length === 0) return "";
   const lines = exercises.map(
@@ -196,13 +221,18 @@ export async function streamCoachResponse(
   const contextStr = formatContext(context);
   const history = context.conversationHistory.slice(-10); // keep last 10 for token budget
 
+  const modeInstruction = context.conversationMode
+    ? MODE_INSTRUCTIONS[context.conversationMode] ?? ""
+    : "";
+
   const chat = model.startChat({
     systemInstruction: {
       role: "system",
       parts: [
         {
           text:
-            SYSTEM_PROMPT +
+            BASE_SYSTEM_PROMPT +
+            modeInstruction +
             "\n\n" +
             formatExerciseLibrary(context.exercises) +
             "\n\n## Current Athlete Data\n" +

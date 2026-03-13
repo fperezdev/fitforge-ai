@@ -1,15 +1,35 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Plus, Bot, User, Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import {
+  Send,
+  Plus,
+  Bot,
+  User,
+  Loader2,
+  RefreshCw,
+  AlertCircle,
+  Lock,
+  CheckCircle2,
+  Dumbbell,
+  HeartPulse,
+  Layers,
+  Lightbulb,
+  ClipboardList,
+} from "lucide-react";
 import { api, importPlanFromAI, streamCoach } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
+
+// ─── Data types ───────────────────────────────────────────────────────────────
 
 interface Conversation {
   id: string;
   title: string | null;
+  mode: "advice" | "plan" | null;
+  status: "active" | "closed";
   updatedAt: string;
 }
 
@@ -20,7 +40,22 @@ interface Message {
   createdAt: string;
 }
 
-// Detect and extract <plan>...</plan> block from assistant message
+interface UserProfile {
+  displayName: string;
+  dateOfBirth: string | null;
+  heightCm: string | number | null;
+  fitnessGoal: string | null;
+  experienceLevel: string | null;
+}
+
+interface WeightEntry {
+  id: string;
+  weightKg: string | number;
+  date: string;
+}
+
+// ─── Plan helpers ─────────────────────────────────────────────────────────────
+
 function extractPlan(content: string): object | null {
   const match = content.match(/<plan>([\s\S]*?)<\/plan>/);
   if (!match) return null;
@@ -75,6 +110,98 @@ interface WorkoutPlan {
   weeks: Week[];
 }
 
+// ─── Full plan (from GET /plans/:id) for Include Plan button ──────────────────
+
+interface FullTemplateExercise {
+  order: number;
+  targetSets: number;
+  targetRepMin: number;
+  targetRepMax: number;
+  rir: number | null;
+  restSeconds: number | null;
+  exercise: { name: string } | null;
+}
+
+interface FullWorkoutTemplate {
+  name: string;
+  templateExercises: FullTemplateExercise[];
+}
+
+interface FullCardioExercise {
+  name: string;
+  zone: number | null;
+  kilometers: string | number | null;
+}
+
+interface FullCardioTemplate {
+  name: string;
+  cardioTemplateExercises: FullCardioExercise[];
+}
+
+interface FullPlanDay {
+  dayNumber: number;
+  type: string;
+  workoutTemplate: FullWorkoutTemplate | null;
+  cardioTemplate: FullCardioTemplate | null;
+}
+
+interface FullPlanMicrocycle {
+  position: number;
+  days: FullPlanDay[];
+}
+
+interface FullPlan {
+  id: string;
+  name: string;
+  status: string;
+  microcycles: FullPlanMicrocycle[];
+}
+
+function formatPlanAsText(p: FullPlan): string {
+  const lines: string[] = [
+    `[Current Training Plan: "${p.name}" — ${p.status}]`,
+  ];
+  for (const mc of p.microcycles) {
+    for (const day of mc.days) {
+      const prefix = `Week ${mc.position}, Day ${day.dayNumber}`;
+      if (day.type === "rest" || (!day.workoutTemplate && !day.cardioTemplate)) {
+        lines.push(`${prefix} — Rest`);
+        continue;
+      }
+      const parts: string[] = [];
+      if (day.workoutTemplate) {
+        const exStr = day.workoutTemplate.templateExercises
+          .sort((a, b) => a.order - b.order)
+          .map((te) => {
+            const name = te.exercise?.name ?? "Unknown";
+            const sets = te.targetSets;
+            const reps =
+              te.targetRepMin === te.targetRepMax
+                ? `${te.targetRepMin}`
+                : `${te.targetRepMin}-${te.targetRepMax}`;
+            const rir = te.rir !== null ? ` RIR${te.rir}` : "";
+            const rest = te.restSeconds ? ` ${te.restSeconds}s` : "";
+            return `${name} ${sets}×${reps}${rir}${rest}`;
+          })
+          .join(", ");
+        parts.push(`${day.workoutTemplate.name}: ${exStr}`);
+      }
+      if (day.cardioTemplate) {
+        const exStr = day.cardioTemplate.cardioTemplateExercises
+          .map((ce) => {
+            const zone = ce.zone !== null ? ` Zone ${ce.zone}` : "";
+            const km = ce.kilometers ? ` ${ce.kilometers}km` : "";
+            return `${ce.name}${zone}${km}`;
+          })
+          .join(", ");
+        parts.push(`${day.cardioTemplate.name} (Cardio): ${exStr}`);
+      }
+      lines.push(`${prefix} — ${parts.join(" + ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 function strengthDetail(ex: StrengthExercise): string {
   const reps =
     ex.repMin && ex.repMax
@@ -82,13 +209,21 @@ function strengthDetail(ex: StrengthExercise): string {
         ? `${ex.repMin} reps`
         : `${ex.repMin}–${ex.repMax} reps`
       : null;
-  return [`${ex.sets} sets`, reps, ex.rir !== undefined ? `RIR ${ex.rir}` : null, ex.restSeconds ? `${ex.restSeconds}s rest` : null]
+  return [
+    `${ex.sets} sets`,
+    reps,
+    ex.rir !== undefined ? `RIR ${ex.rir}` : null,
+    ex.restSeconds ? `${ex.restSeconds}s rest` : null,
+  ]
     .filter(Boolean)
     .join(", ");
 }
 
 function cardioDetail(ex: CardioExercise): string {
-  return [ex.kilometers !== undefined ? `${ex.kilometers} km` : null, ex.zone !== undefined ? `Zone ${ex.zone}` : null]
+  return [
+    ex.kilometers !== undefined ? `${ex.kilometers} km` : null,
+    ex.zone !== undefined ? `Zone ${ex.zone}` : null,
+  ]
     .filter(Boolean)
     .join(", ");
 }
@@ -163,6 +298,8 @@ function PlanDisplay({ plan }: { plan: WorkoutPlan }) {
     </div>
   );
 }
+
+// ─── Message bubbles ──────────────────────────────────────────────────────────
 
 function MessageBubble({
   message,
@@ -246,18 +383,545 @@ function FailedMessageBubble({
   );
 }
 
+// ─── Profile Gate ─────────────────────────────────────────────────────────────
+
+type GateField =
+  | "displayName"
+  | "dateOfBirth"
+  | "heightCm"
+  | "weight"
+  | "fitnessGoal"
+  | "experienceLevel";
+
+const GATE_FIELDS: GateField[] = [
+  "displayName",
+  "dateOfBirth",
+  "heightCm",
+  "weight",
+  "fitnessGoal",
+  "experienceLevel",
+];
+
+const FIELD_LABELS: Record<GateField, string> = {
+  displayName: "your display name",
+  dateOfBirth: "your date of birth",
+  heightCm: "your height",
+  weight: "your current weight",
+  fitnessGoal: "your primary fitness goal",
+  experienceLevel: "your experience level",
+};
+
+const FIELD_PROMPTS: Record<GateField, string> = {
+  displayName: "What should we call you?",
+  dateOfBirth: "What is your date of birth?",
+  heightCm: "What is your height (in cm)?",
+  weight: "What is your current weight (in kg)?",
+  fitnessGoal: "What is your primary fitness goal?",
+  experienceLevel: "What is your training experience level?",
+};
+
+function isMissingField(
+  field: GateField,
+  profile: UserProfile | undefined,
+  hasWeight: boolean
+): boolean {
+  if (!profile) return true;
+  if (field === "weight") return !hasWeight;
+  const val = profile[field as keyof UserProfile];
+  return !val;
+}
+
+function ProfileGate({
+  profile,
+  hasWeight,
+  onComplete,
+}: {
+  profile: UserProfile | undefined;
+  hasWeight: boolean;
+  onComplete: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [inputValue, setInputValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const missingFields = GATE_FIELDS.filter((f) =>
+    isMissingField(f, profile, hasWeight)
+  );
+  const currentField = missingFields[0] ?? null;
+  const doneCount = GATE_FIELDS.length - missingFields.length;
+
+  const profileMutation = useMutation({
+    mutationFn: (data: Partial<UserProfile>) =>
+      api.patch<UserProfile>("/me/profile", data),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["me/profile"], updated);
+      setInputValue("");
+      setError(null);
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  const weightMutation = useMutation({
+    mutationFn: (weightKg: number) =>
+      api.post<WeightEntry>("/body/weight", {
+        date: new Date().toISOString().slice(0, 10),
+        weightKg,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["weight"] });
+      setInputValue("");
+      setError(null);
+    },
+    onError: (err: Error) => setError(err.message),
+  });
+
+  // Re-check completion after mutations settle
+  useEffect(() => {
+    if (missingFields.length === 0) onComplete();
+  }, [missingFields.length, onComplete]);
+
+  if (missingFields.length === 0) return null;
+
+  const isPending = profileMutation.isPending || weightMutation.isPending;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const val = inputValue.trim();
+    if (!val || !currentField) return;
+
+    if (currentField === "weight") {
+      const num = parseFloat(val);
+      if (isNaN(num) || num <= 0) {
+        setError("Please enter a valid weight in kg.");
+        return;
+      }
+      weightMutation.mutate(num);
+      return;
+    }
+
+    if (currentField === "heightCm") {
+      const num = parseFloat(val);
+      if (isNaN(num) || num <= 0) {
+        setError("Please enter a valid height in cm.");
+        return;
+      }
+      profileMutation.mutate({ heightCm: num });
+      return;
+    }
+
+    profileMutation.mutate({ [currentField]: val });
+  }
+
+  const isSelect = currentField === "fitnessGoal" || currentField === "experienceLevel";
+
+  const selectOptions: Record<string, { value: string; label: string }[]> = {
+    fitnessGoal: [
+      { value: "hypertrophy", label: "Muscle Building" },
+      { value: "strength", label: "Strength" },
+      { value: "endurance", label: "Endurance" },
+      { value: "weight_loss", label: "Weight Loss" },
+      { value: "general_fitness", label: "General Fitness" },
+      { value: "running", label: "Running" },
+    ],
+    experienceLevel: [
+      { value: "beginner", label: "Beginner (< 1 year)" },
+      { value: "intermediate", label: "Intermediate (1–3 years)" },
+      { value: "advanced", label: "Advanced (3+ years)" },
+    ],
+  };
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center max-w-sm mx-auto">
+      <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+        <Bot className="h-7 w-7 text-primary" />
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold">Before we begin</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          We need a few details to personalise your coaching.
+        </p>
+      </div>
+
+      {/* Progress */}
+      <div className="w-full">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs text-muted-foreground">
+            {doneCount} of {GATE_FIELDS.length} complete
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {missingFields.length} remaining
+          </span>
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-300"
+            style={{ width: `${(doneCount / GATE_FIELDS.length) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Current question */}
+      {currentField && (
+        <form onSubmit={handleSubmit} className="w-full space-y-3">
+          <label className="block text-sm font-medium text-left">
+            {FIELD_PROMPTS[currentField]}
+          </label>
+
+          {currentField === "dateOfBirth" ? (
+            <DatePicker
+              value={inputValue}
+              onChange={(v) => setInputValue(v)}
+              toDate={new Date()}
+              placeholder="Select date of birth"
+            />
+          ) : isSelect ? (
+            <select
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              aria-label={FIELD_LABELS[currentField]}
+              required
+            >
+              <option value="">— select —</option>
+              {selectOptions[currentField].map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type={currentField === "heightCm" || currentField === "weight" ? "number" : "text"}
+              step={currentField === "heightCm" || currentField === "weight" ? "0.1" : undefined}
+              min={currentField === "heightCm" || currentField === "weight" ? "0" : undefined}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder={
+                currentField === "heightCm"
+                  ? "e.g. 175"
+                  : currentField === "weight"
+                  ? "e.g. 75"
+                  : currentField === "displayName"
+                  ? "e.g. Alex"
+                  : ""
+              }
+              className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              aria-label={FIELD_LABELS[currentField]}
+              required
+            />
+          )}
+
+          {error && <p className="text-xs text-destructive text-left">{error}</p>}
+
+          <Button type="submit" className="w-full" loading={isPending} disabled={!inputValue.trim()}>
+            Continue
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ─── Mode Selector ────────────────────────────────────────────────────────────
+
+function ModeSelector({
+  onSelect,
+}: {
+  onSelect: (mode: "advice" | "plan") => void;
+}) {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
+      <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+        <Bot className="h-7 w-7 text-primary" />
+      </div>
+      <div>
+        <h2 className="text-lg font-semibold">FitForge AI Coach</h2>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+          What would you like to do today?
+        </p>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
+        <button
+          onClick={() => onSelect("advice")}
+          className="flex-1 flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-5 text-sm font-medium hover:border-primary hover:bg-primary/5 transition-colors"
+        >
+          <Lightbulb className="h-6 w-6 text-primary" />
+          <span>Get Advice</span>
+          <span className="text-xs text-muted-foreground font-normal">
+            Ask about training, hypertrophy, or cardio
+          </span>
+        </button>
+        <button
+          onClick={() => onSelect("plan")}
+          className="flex-1 flex flex-col items-center gap-2 rounded-xl border border-border bg-card p-5 text-sm font-medium hover:border-primary hover:bg-primary/5 transition-colors"
+        >
+          <ClipboardList className="h-6 w-6 text-primary" />
+          <span>Build a Plan</span>
+          <span className="text-xs text-muted-foreground font-normal">
+            Get a personalised training plan
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Advice Flow ──────────────────────────────────────────────────────────────
+
+function AdviceFlow({
+  onStart,
+  isLoading,
+}: {
+  onStart: (concern: string) => void;
+  isLoading: boolean;
+}) {
+  const [concern, setConcern] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const val = concern.trim();
+    if (!val) return;
+    onStart(val);
+  }
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center max-w-sm mx-auto">
+      <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+        <Lightbulb className="h-6 w-6 text-primary" />
+      </div>
+      <div>
+        <h2 className="text-base font-semibold">What would you like advice on?</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Describe your training topic or question.
+        </p>
+      </div>
+      <form onSubmit={handleSubmit} className="w-full space-y-3">
+        <textarea
+          value={concern}
+          onChange={(e) => setConcern(e.target.value)}
+          rows={3}
+          placeholder="e.g. How should I structure my upper/lower split for hypertrophy?"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+          aria-label="Training topic"
+        />
+        <Button type="submit" className="w-full" loading={isLoading} disabled={!concern.trim()}>
+          Start conversation
+        </Button>
+      </form>
+    </div>
+  );
+}
+
+// ─── Plan Flow ────────────────────────────────────────────────────────────────
+
+type PlanType = "hypertrophy" | "cardio" | "both";
+
+const PLAN_TYPE_OPTIONS: { value: PlanType; label: string; icon: React.ReactNode }[] = [
+  { value: "hypertrophy", label: "Hypertrophy only", icon: <Dumbbell className="h-5 w-5" /> },
+  { value: "cardio", label: "Cardio only", icon: <HeartPulse className="h-5 w-5" /> },
+  { value: "both", label: "Both", icon: <Layers className="h-5 w-5" /> },
+];
+
+function PlanFlow({
+  onStart,
+  isLoading,
+}: {
+  onStart: (objectives: string, planType: PlanType, extra: string) => void;
+  isLoading: boolean;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [objectives, setObjectives] = useState("");
+  const [planType, setPlanType] = useState<PlanType | null>(null);
+  const [extra, setExtra] = useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (step === 1) {
+      if (!objectives.trim()) return;
+      setStep(2);
+    } else if (step === 2) {
+      if (!planType) return;
+      setStep(3);
+    } else {
+      onStart(objectives.trim(), planType!, extra.trim());
+    }
+  }
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center max-w-sm mx-auto">
+      <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+        <ClipboardList className="h-6 w-6 text-primary" />
+      </div>
+
+      {/* Step indicator */}
+      <div className="flex items-center gap-2">
+        {([1, 2, 3] as const).map((s) => (
+          <div
+            key={s}
+            className={cn(
+              "h-2 w-2 rounded-full transition-colors",
+              s <= step ? "bg-primary" : "bg-muted"
+            )}
+          />
+        ))}
+      </div>
+
+      <form onSubmit={handleSubmit} className="w-full space-y-4">
+        {step === 1 && (
+          <>
+            <div>
+              <h2 className="text-base font-semibold">Describe your training goals</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                What do you want to achieve with this plan?
+              </p>
+            </div>
+            <textarea
+              value={objectives}
+              onChange={(e) => setObjectives(e.target.value)}
+              rows={3}
+              placeholder="e.g. Build muscle mass and lose some body fat over 12 weeks"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              aria-label="Training objectives"
+            />
+            <Button type="submit" className="w-full" disabled={!objectives.trim()}>
+              Next
+            </Button>
+          </>
+        )}
+
+        {step === 2 && (
+          <>
+            <div>
+              <h2 className="text-base font-semibold">What type of plan?</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Choose the focus of your training plan.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              {PLAN_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setPlanType(opt.value)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-colors text-left",
+                    planType === opt.value
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-border hover:border-primary/50 hover:bg-muted/50"
+                  )}
+                >
+                  {opt.icon}
+                  {opt.label}
+                  {planType === opt.value && (
+                    <CheckCircle2 className="h-4 w-4 ml-auto text-primary" />
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setStep(1)}
+              >
+                Back
+              </Button>
+              <Button type="submit" className="flex-1" disabled={!planType}>
+                Next
+              </Button>
+            </div>
+          </>
+        )}
+
+        {step === 3 && (
+          <>
+            <div>
+              <h2 className="text-base font-semibold">Any additional context?</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Optional — days per week, equipment, preferences, etc.
+              </p>
+            </div>
+            <textarea
+              value={extra}
+              onChange={(e) => setExtra(e.target.value)}
+              rows={3}
+              placeholder="e.g. 4 days per week, gym with barbells and dumbbells"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              aria-label="Additional context"
+            />
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setStep(2)}
+              >
+                Back
+              </Button>
+              <Button type="submit" className="flex-1" loading={isLoading}>
+                Generate Plan
+              </Button>
+            </div>
+          </>
+        )}
+      </form>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export function CoachPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  // Conversation selection
   const [activeConv, setActiveConv] = useState<string | null>(null);
+
+  // Chat state
   const [inputValue, setInputValue] = useState("");
   const [streamingMsg, setStreamingMsg] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [planToSave, setPlanToSave] = useState<object | null>(null);
-  const [failedMessage, setFailedMessage] = useState<{ convId: string; content: string } | null>(null);
+  const [failedMessage, setFailedMessage] = useState<{
+    convId: string;
+    content: string;
+  } | null>(null);
   const lastServerMessagesRef = useRef<Message[]>([]);
   const streamControllerRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Funnel state: which step the "new chat" pane is on
+  type FunnelStep = "mode" | "advice" | "plan";
+  const [funnelStep, setFunnelStep] = useState<FunnelStep>("mode");
+  const [isCreatingConv, setIsCreatingConv] = useState(false);
+  const [isIncludingPlan, setIsIncludingPlan] = useState(false);
+  const [includedPlanText, setIncludedPlanText] = useState<string | null>(null);
+
+  // ── Data ──────────────────────────────────────────────────────────────────
+
+  const { data: profile } = useQuery<UserProfile>({
+    queryKey: ["me/profile"],
+    queryFn: () => api.get<UserProfile>("/me/profile"),
+  });
+
+  const { data: weightEntries = [] } = useQuery<WeightEntry[]>({
+    queryKey: ["weight"],
+    queryFn: () => api.get<WeightEntry[]>("/body/weight?limit=1"),
+  });
+  const hasWeight = weightEntries.length > 0;
+
+  const profileComplete =
+    !!profile &&
+    !!profile.displayName &&
+    !!profile.dateOfBirth &&
+    (!!profile.heightCm || profile.heightCm === 0) &&
+    hasWeight &&
+    !!profile.fitnessGoal &&
+    !!profile.experienceLevel;
 
   const { data: conversations = [] } = useQuery<Conversation[]>({
     queryKey: ["conversations"],
@@ -276,62 +940,73 @@ export function CoachPage() {
   });
   const canImportPlan = plan === null;
 
-  // Keep a ref to the last data that came from the server (not optimistic)
+  // Active conversation metadata
+  const activeConvData = conversations.find((c) => c.id === activeConv);
+  const isClosed = activeConvData?.status === "closed";
+
+  // ── Effects ───────────────────────────────────────────────────────────────
+
   useEffect(() => {
     lastServerMessagesRef.current = messages;
   }, [messages]);
-
-  const createConvMutation = useMutation({
-    mutationFn: (title?: string) =>
-      api.post<Conversation>("/coach/conversations", { title }),
-    onSuccess: (conv) => {
-      queryClient.invalidateQueries({ queryKey: ["conversations"] });
-      setActiveConv(conv.id);
-    },
-  });
-
-  const importPlanMutation = useMutation({
-    mutationFn: (plan: object) => importPlanFromAI(plan),
-    onSuccess: (result) => {
-      setPlanToSave(null);
-      queryClient.invalidateQueries({ queryKey: ["plans"] });
-      navigate(`/planner/plans/${result.id}`);
-    },
-  });
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingMsg, failedMessage]);
 
-  // Clear failed message when switching conversations
   useEffect(() => {
     setFailedMessage(null);
+    setIncludedPlanText(null);
   }, [activeConv]);
 
-  function sendMessage(content?: string) {
-    if (!activeConv || isStreaming) return;
-    const isRetry = content !== undefined;
-    const msg = content ?? inputValue.trim();
+  // Reset funnel when user deselects conversation
+  useEffect(() => {
+    if (!activeConv) setFunnelStep("mode");
+  }, [activeConv]);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
+  const importPlanMutation = useMutation({
+    mutationFn: (p: object) => importPlanFromAI(p),
+    onSuccess: (result) => {
+      setPlanToSave(null);
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
+      navigate(`/planner/plans/${result.id}`);
+    },
+  });
+
+  // ── Chat helpers ──────────────────────────────────────────────────────────
+
+  function sendMessage(content?: string, convId?: string) {
+    const targetConv = convId ?? activeConv;
+    if (!targetConv || isStreaming) return;
+    const isRetry = content !== undefined && convId === undefined;
+    const userText = content ?? inputValue.trim();
+    const msg = userText
+      ? includedPlanText ? `${userText}\n\n${includedPlanText}` : userText
+      : includedPlanText ?? "";
     if (!msg) return;
 
-    if (!isRetry) setInputValue("");
+    if (!isRetry && convId === undefined) {
+      setInputValue("");
+      setIncludedPlanText(null);
+    }
     setFailedMessage(null);
     setStreamingMsg("");
     setIsStreaming(true);
 
     if (isRetry) {
-      // Reset cache to last server state to remove the stale optimistic message
       queryClient.setQueryData<Message[]>(
-        ["messages", activeConv],
+        ["messages", targetConv],
         lastServerMessagesRef.current
       );
     } else {
-      // Optimistically add user message
-      queryClient.setQueryData<Message[]>(["messages", activeConv], (prev) => [
+      queryClient.setQueryData<Message[]>(["messages", targetConv], (prev) => [
         ...(prev ?? []),
         {
           id: `optimistic-${Date.now()}`,
-          conversationId: activeConv,
+          conversationId: targetConv,
           role: "user",
           content: msg,
           createdAt: new Date().toISOString(),
@@ -340,42 +1015,118 @@ export function CoachPage() {
     }
 
     streamControllerRef.current = streamCoach(
-      activeConv,
+      targetConv,
       msg,
       (chunk) => setStreamingMsg((p) => p + chunk),
       (_messageId) => {
         setIsStreaming(false);
         setStreamingMsg("");
-        queryClient.invalidateQueries({ queryKey: ["messages", activeConv] });
+        queryClient.invalidateQueries({ queryKey: ["messages", targetConv] });
         queryClient.invalidateQueries({ queryKey: ["conversations"] });
       },
       (err) => {
         setIsStreaming(false);
         setStreamingMsg("");
         setFailedMessage({
-          convId: activeConv,
+          convId: targetConv,
           content: err.message || "Failed to get a response. Please try again.",
         });
       }
     );
   }
 
-  // Show the failed bubble only when it belongs to the active conversation
-  const showFailedBubble = failedMessage?.convId === activeConv;
+  // ── Funnel actions ────────────────────────────────────────────────────────
 
-  // The last user message from server state — used for retry
-  const lastUserMessage = [...lastServerMessagesRef.current].reverse().find((m) => m.role === "user");
+  async function startAdvice(concern: string) {
+    setIsCreatingConv(true);
+    try {
+      const conv = await api.post<Conversation>("/coach/conversations", {
+        title: concern.slice(0, 80),
+        mode: "advice",
+      });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      setActiveConv(conv.id);
+      sendMessage(concern, conv.id);
+    } finally {
+      setIsCreatingConv(false);
+    }
+  }
+
+  async function startPlan(objectives: string, planType: PlanType, extra: string) {
+    setIsCreatingConv(true);
+    const planTypeLabel =
+      planType === "hypertrophy"
+        ? "Hypertrophy only"
+        : planType === "cardio"
+        ? "Cardio only"
+        : "Both (Hypertrophy + Cardio)";
+
+    const firstMessage = [
+      `Plan type: ${planTypeLabel}`,
+      `Objectives: ${objectives}`,
+      extra ? `Additional context: ${extra}` : null,
+      "Please create a training plan based on the above.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      const conv = await api.post<Conversation>("/coach/conversations", {
+        title: objectives.slice(0, 80),
+        mode: "plan",
+      });
+      queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      setActiveConv(conv.id);
+      sendMessage(firstMessage, conv.id);
+    } finally {
+      setIsCreatingConv(false);
+    }
+  }
+
+  // ── Include plan in input ─────────────────────────────────────────────────
+
+  const planIsIncluded = includedPlanText !== null;
+
+  async function toggleIncludePlan() {
+    if (isIncludingPlan) return;
+
+    if (planIsIncluded) {
+      setIncludedPlanText(null);
+      return;
+    }
+
+    if (!plan?.id) return;
+    setIsIncludingPlan(true);
+    try {
+      const full = await api.get<FullPlan>(`/plans/${plan.id}`);
+      setIncludedPlanText(formatPlanAsText(full));
+    } finally {
+      setIsIncludingPlan(false);
+    }
+  }
+
+  // ── Derived values ────────────────────────────────────────────────────────
+
+  const showFailedBubble = failedMessage?.convId === activeConv;
+  const lastUserMessage = [...lastServerMessagesRef.current]
+    .reverse()
+    .find((m) => m.role === "user");
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-[calc(100vh-6rem)] gap-4">
-      {/* Sidebar — conversation list */}
+      {/* Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 border border-border rounded-xl bg-card overflow-hidden">
         <div className="p-3 border-b border-border">
           <Button
             size="sm"
             className="w-full"
-            onClick={() => createConvMutation.mutate("New conversation")}
-            loading={createConvMutation.isPending}
+            onClick={() => {
+              setActiveConv(null);
+              setFunnelStep("mode");
+            }}
+            disabled={isCreatingConv}
           >
             <Plus className="h-3.5 w-3.5" />
             New chat
@@ -398,13 +1149,28 @@ export function CoachPage() {
                   : "hover:bg-accent"
               )}
             >
-              <p className="truncate font-medium">
-                {conv.title ?? "Conversation"}
-              </p>
-              <p className={cn(
-                "text-xs truncate mt-0.5",
-                activeConv === conv.id ? "text-primary-foreground/70" : "text-muted-foreground"
-              )}>
+              <div className="flex items-center gap-1.5 min-w-0">
+                {conv.status === "closed" && (
+                  <Lock
+                    className={cn(
+                      "h-3 w-3 shrink-0",
+                      activeConv === conv.id
+                        ? "text-primary-foreground/70"
+                        : "text-muted-foreground"
+                    )}
+                    aria-label="Closed"
+                  />
+                )}
+                <p className="truncate font-medium">{conv.title ?? "Conversation"}</p>
+              </div>
+              <p
+                className={cn(
+                  "text-xs truncate mt-0.5",
+                  activeConv === conv.id
+                    ? "text-primary-foreground/70"
+                    : "text-muted-foreground"
+                )}
+              >
                 {new Date(conv.updatedAt).toLocaleDateString()}
               </p>
             </button>
@@ -412,28 +1178,18 @@ export function CoachPage() {
         </div>
       </aside>
 
-      {/* Chat area */}
+      {/* Main chat area */}
       <div className="flex-1 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
-        {!activeConv ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 p-8 text-center">
-            <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center">
-              <Bot className="h-8 w-8 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold">FitForge AI Coach</h2>
-              <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                Your personal trainer powered by Gemini. Ask for advice, generate
-                workout plans, or discuss your progress.
-              </p>
-            </div>
-            <Button
-              onClick={() => createConvMutation.mutate("New conversation")}
-              loading={createConvMutation.isPending}
-            >
-              Start chatting
-            </Button>
-          </div>
-        ) : (
+        {/* Profile gate */}
+        {!profileComplete ? (
+          <ProfileGate
+            profile={profile}
+            hasWeight={hasWeight}
+            onComplete={() => {
+              /* gate disappears automatically when profileComplete flips */
+            }}
+          />
+        ) : activeConv ? (
           <>
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -441,12 +1197,11 @@ export function CoachPage() {
                 <MessageBubble
                   key={msg.id}
                   message={msg}
-                  onSavePlan={(plan) => setPlanToSave(plan)}
+                  onSavePlan={(p) => setPlanToSave(p)}
                   canImportPlan={canImportPlan}
                 />
               ))}
 
-              {/* Failed message bubble */}
               {showFailedBubble && (
                 <FailedMessageBubble
                   content={failedMessage!.content}
@@ -454,7 +1209,6 @@ export function CoachPage() {
                 />
               )}
 
-              {/* Streaming bubble */}
               {isStreaming && (
                 <div className="flex gap-3">
                   <div className="h-7 w-7 rounded-full bg-muted flex items-center justify-center shrink-0 mt-0.5">
@@ -463,9 +1217,10 @@ export function CoachPage() {
                   <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-muted px-4 py-2.5 text-sm">
                     {(() => {
                       const planStart = streamingMsg.indexOf("<plan>");
-                      const visibleText = planStart === -1
-                        ? streamingMsg
-                        : streamingMsg.slice(0, planStart).trim();
+                      const visibleText =
+                        planStart === -1
+                          ? streamingMsg
+                          : streamingMsg.slice(0, planStart).trim();
                       const buildingPlan = planStart !== -1;
                       return (
                         <>
@@ -489,33 +1244,75 @@ export function CoachPage() {
               <div ref={bottomRef} />
             </div>
 
-            {/* Input */}
+            {/* Input or closed banner */}
             <div className="p-3 border-t border-border">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  sendMessage();
-                }}
-                className="flex gap-2"
-              >
-                <input
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Ask your coach…"
-                  disabled={isStreaming}
-                  className="flex-1 h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                  aria-label="Message input"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  disabled={!inputValue.trim() || isStreaming}
-                  aria-label="Send"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </form>
+              {isClosed ? (
+                <div className="flex items-center justify-center gap-2 h-10 rounded-lg bg-muted px-4 text-sm text-muted-foreground">
+                  Your training plan is active. Start a new Plan Making conversation to refine another.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {plan !== null && (
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={planIsIncluded ? "default" : "outline"}
+                        disabled={isIncludingPlan || isStreaming}
+                        onClick={toggleIncludePlan}
+                        className="h-7 text-xs gap-1.5"
+                      >
+                        {isIncludingPlan ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <ClipboardList className="h-3 w-3" />
+                        )}
+                        {planIsIncluded ? "Remove Plan" : "Include Plan"}
+                      </Button>
+                    </div>
+                  )}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      sendMessage();
+                    }}
+                    className="flex gap-2"
+                  >
+                    <input
+                      value={inputValue}
+                      onChange={(e) => setInputValue(e.target.value)}
+                      placeholder="Ask your coach…"
+                      disabled={isStreaming}
+                      className="flex-1 h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                      aria-label="Message input"
+                    />
+                     <Button
+                      type="submit"
+                      size="icon"
+                      disabled={(!inputValue.trim() && !planIsIncluded) || isStreaming}
+                      aria-label="Send"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </form>
+                </div>
+              )}
             </div>
+          </>
+        ) : (
+          /* No active conversation — show funnel */
+          <>
+            {funnelStep === "mode" && (
+              <ModeSelector
+                onSelect={(mode) => setFunnelStep(mode === "advice" ? "advice" : "plan")}
+              />
+            )}
+            {funnelStep === "advice" && (
+              <AdviceFlow onStart={startAdvice} isLoading={isCreatingConv} />
+            )}
+            {funnelStep === "plan" && (
+              <PlanFlow onStart={startPlan} isLoading={isCreatingConv} />
+            )}
           </>
         )}
       </div>

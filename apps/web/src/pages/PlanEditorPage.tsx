@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { PlannerPage } from "./PlannerPage";
 import {
   DndContext,
   closestCenter,
@@ -114,6 +115,7 @@ interface TrainingPlan {
   startDate: string | null; // YYYY-MM-DD, set when plan was activated
   activatedAt: string | null; // ISO timestamp, fallback anchor for legacy rows
   microcycles: PlanMicrocycle[];
+  dayLogs?: Record<string, string>; // "weekIndex:dayIndex" -> resolved worst status
 }
 
 interface Exercise {
@@ -750,6 +752,7 @@ function DayCell({
   isDraggable = false,
   isReordering = false,
   scheduledDate,
+  status,
   onNavigateToDay,
   isOverlay = false,
 }: {
@@ -762,11 +765,20 @@ function DayCell({
   isDraggable?: boolean;
   isReordering?: boolean;
   scheduledDate?: string | null;
+  status?: string | null;
   onNavigateToDay?: () => void;
   isOverlay?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
+
+  // A past day is any scheduled slot strictly before today (only relevant for active plans)
+  const isPast = (() => {
+    if (!scheduledDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(scheduledDate + "T00:00:00") < today;
+  })();
 
   const {
     attributes,
@@ -775,7 +787,7 @@ function DayCell({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: day.dayNumber, disabled: !isDraggable || isOverlay });
+  } = useSortable({ id: day.dayNumber, disabled: !isDraggable || isOverlay || isPast });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -811,7 +823,7 @@ function DayCell({
   // Clicks on training days navigate into the day editor.
   // We let dnd-kit handle the pointer — it fires onClick only when no drag occurred.
   const handleClick = () => {
-    if (isDragging || isReordering) return;
+    if (isDragging || isReordering || isPast) return;
     if (day.type === "training") {
       onNavigateToDay?.();
     } else if (!isLocked) {
@@ -830,7 +842,8 @@ function DayCell({
         onClick={handleClick}
         className={cn(
           "w-full rounded-lg border text-left transition-colors flex flex-col p-1.5 h-[60px] overflow-hidden",
-          isDraggable && "cursor-grab active:cursor-grabbing touch-none",
+          isDraggable && !isPast && "cursor-grab active:cursor-grabbing touch-none",
+          isPast && "cursor-default opacity-60",
           hasAny
             ? "border-primary/30 bg-primary/5 hover:bg-primary/10"
             : day.type === "rest"
@@ -847,6 +860,38 @@ function DayCell({
               {formatSlotDate(scheduledDate)}
             </span>
           )}
+          {(() => {
+            if (status) {
+              return (
+                <span
+                  className={cn(
+                    "block text-[9px] font-semibold leading-tight",
+                    status.includes("skipped") ? "text-slate-400" : "text-emerald-500"
+                  )}
+                >
+                  {status.includes("skipped") ? "Skipped" : "Done"}
+                </span>
+              );
+            }
+            // Show "Missed" for past training days with no log
+            if (
+              scheduledDate &&
+              day.type === "training" &&
+              (day.workoutTemplateId || day.cardioTemplateId)
+            ) {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const slot = new Date(scheduledDate + "T00:00:00");
+              if (slot < today) {
+                return (
+                  <span className="block text-[9px] font-semibold leading-tight text-destructive/70">
+                    Missed
+                  </span>
+                );
+              }
+            }
+            return null;
+          })()}
         </span>
 
         {day.type !== "training" ? (
@@ -879,8 +924,8 @@ function DayCell({
         )}
       </button>
 
-      {/* Rest-day quick toggle popover */}
-      {open && (
+      {/* Rest-day quick toggle popover — not available for past days */}
+      {open && !isPast && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
           <div className="absolute z-50 top-full mt-1 left-0 rounded-xl border border-border bg-card shadow-xl p-3 space-y-2 min-w-[160px]">
@@ -1222,6 +1267,11 @@ function PlanView({
                                 ? getPlanSlotDate(plan, mc.position - 1, d - 1)
                                 : null
                             }
+                            status={
+                              plan.status === "active"
+                                ? (plan.dayLogs?.[`${mc.position - 1}:${d - 1}`] ?? null)
+                                : null
+                            }
                             onNavigateToDay={() => onNavigateToDay(mc.position, d)}
                           />
                         </div>
@@ -1422,6 +1472,16 @@ function DayView({
     : null;
 
   const isLocked = plan.status === "completed";
+
+  // Past days (active plan only) are read-only — the slot has already passed
+  const isPast = (() => {
+    if (plan.status !== "active") return false;
+    const slotDate = getPlanSlotDate(plan, selectedWeek - 1, selectedDay - 1);
+    if (!slotDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(slotDate + "T00:00:00") < today;
+  })();
 
   // ── Local editable state ──────────────────────────────────────────────────
   const [isEditing, setIsEditing] = useState(false);
@@ -1652,7 +1712,7 @@ function DayView({
             </span>
           </div>
 
-          {!isLocked && (
+          {!isLocked && !isPast && (
             isEditing ? (
               <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saveMutation.isPending}>
                 <X className="h-3.5 w-3.5 mr-1" />
@@ -1783,15 +1843,30 @@ interface AdherenceWeek {
   missed: number;
 }
 
+interface AdherenceComponent {
+  totalPlanned: number;
+  totalCompleted: number;
+  totalSkipped: number;
+  totalMissed: number;
+  weeks: AdherenceWeek[];
+}
+
 interface Adherence {
   completionRate: number;
+  totalPlanned: number;
+  totalCompleted: number;
+  totalSkipped: number;
+  totalMissed: number;
   currentStreak: number;
   longestStreak: number;
   totalVolume: { sets: number; reps: number; weightKg: number };
   weeks: AdherenceWeek[];
+  strength: AdherenceComponent;
+  cardio: AdherenceComponent;
 }
 
 function PlanAdherenceCard({ planId }: { planId: string }) {
+  const [tab, setTab] = useState<"all" | "strength" | "cardio">("all");
   const { data: adherence, isLoading } = useQuery<Adherence | null>({
     queryKey: ["planAdherence", planId],
     queryFn: () => api.get(`/plans/${planId}/adherence`),
@@ -1809,7 +1884,14 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
   if (!adherence) return null;
 
   const pct = Math.round(adherence.completionRate * 100);
-  const hasData = adherence.weeks.some((w) => w.planned > 0);
+
+  // Determine which dataset to show in the per-week table
+  const component = tab === "strength" ? adherence.strength : tab === "cardio" ? adherence.cardio : null;
+  const weeksToShow = component ? component.weeks : adherence.weeks.filter((w) => w.planned > 0);
+  const hasData = weeksToShow.some((w) => w.planned > 0);
+  const totals = component
+    ? { planned: component.totalPlanned, completed: component.totalCompleted, skipped: component.totalSkipped, missed: component.totalMissed }
+    : { planned: adherence.totalPlanned, completed: adherence.totalCompleted, skipped: adherence.totalSkipped, missed: adherence.totalMissed };
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-4">
@@ -1818,42 +1900,63 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
         <h3 className="font-semibold text-sm">Plan Adherence</h3>
       </div>
 
-      {/* Key stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="rounded-lg bg-muted/50 p-3 text-center">
-          <p className="text-2xl font-bold tabular-nums">{pct}%</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Completion</p>
-        </div>
-        <div className="rounded-lg bg-muted/50 p-3 text-center">
-          <div className="flex items-center justify-center gap-1">
-            <Flame className="h-4 w-4 text-orange-500" />
-            <p className="text-2xl font-bold tabular-nums">{adherence.currentStreak}</p>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">Current streak</p>
-        </div>
-        <div className="rounded-lg bg-muted/50 p-3 text-center">
-          <p className="text-2xl font-bold tabular-nums">{adherence.longestStreak}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Longest streak</p>
-        </div>
-        <div className="rounded-lg bg-muted/50 p-3 text-center">
-          <p className="text-2xl font-bold tabular-nums">{adherence.totalVolume.sets}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Total sets</p>
-        </div>
+      {/* Tab switcher */}
+      <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs font-medium">
+        {(["all", "strength", "cardio"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={cn(
+              "flex-1 rounded-md py-1 capitalize transition-colors",
+              tab === t
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {t === "all" ? "All" : t === "strength" ? "Strength" : "Cardio"}
+          </button>
+        ))}
       </div>
 
-      {/* Volume detail */}
-      {adherence.totalVolume.sets > 0 && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Weight className="h-3.5 w-3.5" />
-          <span>
-            {adherence.totalVolume.reps.toLocaleString()} reps ·{" "}
-            {adherence.totalVolume.weightKg.toLocaleString()} kg total volume
-          </span>
-        </div>
+      {/* Key stats — only on All tab */}
+      {tab === "all" && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-lg bg-muted/50 p-3 text-center">
+              <p className="text-2xl font-bold tabular-nums">{pct}%</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Completion</p>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3 text-center">
+              <div className="flex items-center justify-center gap-1">
+                <Flame className="h-4 w-4 text-orange-500" />
+                <p className="text-2xl font-bold tabular-nums">{adherence.currentStreak}</p>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">Current streak</p>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3 text-center">
+              <p className="text-2xl font-bold tabular-nums">{adherence.longestStreak}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Longest streak</p>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3 text-center">
+              <p className="text-2xl font-bold tabular-nums">{adherence.totalVolume.sets}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Total sets</p>
+            </div>
+          </div>
+
+          {adherence.totalVolume.sets > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Weight className="h-3.5 w-3.5" />
+              <span>
+                {adherence.totalVolume.reps.toLocaleString()} reps ·{" "}
+                {adherence.totalVolume.weightKg.toLocaleString()} kg total volume
+              </span>
+            </div>
+          )}
+        </>
       )}
 
       {/* Per-week breakdown */}
-      {hasData && (
+      {hasData ? (
         <div className="space-y-1.5">
           <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
             <span>Wk</span>
@@ -1862,34 +1965,46 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
             <span className="text-center text-amber-600 dark:text-amber-400">Skip</span>
             <span className="text-center text-destructive/70">Miss</span>
           </div>
-          {adherence.weeks
-            .filter((w) => w.planned > 0)
-            .map((w) => (
-              <div
-                key={w.weekIndex}
-                className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 items-center rounded-md bg-muted/30 px-2 py-1.5 text-sm"
-              >
-                <span className="text-xs font-semibold text-muted-foreground w-6">
-                  W{w.weekIndex + 1}
-                </span>
-                <span className="text-center tabular-nums">{w.planned}</span>
-                <span className="text-center tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">
-                  {w.completed}
-                </span>
-                <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
-                  {w.skipped}
-                </span>
-                <span className="text-center tabular-nums text-destructive/70">
-                  {w.missed}
-                </span>
-              </div>
-            ))}
-        </div>
-      )}
+          {weeksToShow.map((w) => (
+            <div
+              key={w.weekIndex}
+              className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 items-center rounded-md bg-muted/30 px-2 py-1.5 text-sm"
+            >
+              <span className="text-xs font-semibold text-muted-foreground w-6">
+                W{w.weekIndex + 1}
+              </span>
+              <span className="text-center tabular-nums">{w.planned}</span>
+              <span className="text-center tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">
+                {w.completed}
+              </span>
+              <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
+                {w.skipped}
+              </span>
+              <span className="text-center tabular-nums text-destructive/70">
+                {w.missed}
+              </span>
+            </div>
+          ))}
 
-      {!hasData && (
+          {/* Totals summary */}
+          {totals.planned > 0 && (
+            <p className="text-xs text-muted-foreground text-center pt-1">
+              {totals.planned} planned ·{" "}
+              <span className="text-emerald-600 dark:text-emerald-400">{totals.completed} done</span>
+              {totals.skipped > 0 && (
+                <> · <span className="text-amber-600 dark:text-amber-400">{totals.skipped} skipped</span></>
+              )}
+              {totals.missed > 0 && (
+                <> · <span className="text-destructive/70">{totals.missed} missed</span></>
+              )}
+            </p>
+          )}
+        </div>
+      ) : (
         <p className="text-xs text-muted-foreground text-center py-2">
-          No data yet — complete your first planned workout to see stats.
+          {tab === "all"
+            ? "No data yet — complete your first planned workout to see stats."
+            : `No ${tab} data yet.`}
         </p>
       )}
     </div>
@@ -2018,7 +2133,6 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export function PlanEditorPage() {
-  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("mesocycle");
@@ -2026,11 +2140,20 @@ export function PlanEditorPage() {
   const [dayViewDay, setDayViewDay] = useState<number | undefined>();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
-  const { data: plan, isLoading, isError, refetch } = useQuery<TrainingPlan>({
+  // Fetch the user's single plan by list endpoint (no id in URL)
+  const { data: planMeta, isLoading: isMetaLoading } = useQuery<{ id: string } | null>({
+    queryKey: ["plans"],
+    queryFn: () => api.get("/plans"),
+  });
+  const id = planMeta?.id;
+
+  const { data: plan, isLoading: isPlanLoading, isError, refetch } = useQuery<TrainingPlan>({
     queryKey: ["plan", id],
     queryFn: () => api.get(`/plans/${id}`),
     enabled: !!id,
   });
+
+  const isLoading = isMetaLoading || (!!id && isPlanLoading);
 
   const deletePlanMutation = useMutation({
     mutationFn: () => api.delete(`/plans/${id}`),
@@ -2061,12 +2184,17 @@ export function PlanEditorPage() {
     );
   }
 
-  if (isLoading || !plan) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">
         Loading plan…
       </div>
     );
+  }
+
+  // No plan yet — show creation form
+  if (!planMeta || !plan) {
+    return <PlannerPage />;
   }
 
   const goToDayView = (week: number, day: number) => {

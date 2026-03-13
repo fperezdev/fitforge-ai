@@ -31,7 +31,6 @@ interface CardioSession {
 const nanToUndef = (v: unknown) =>
   typeof v === "number" && isNaN(v) ? undefined : v;
 
-// Friendly form schema — distance in km, duration as mm:ss parts
 const cardioSchema = z.object({
   type: z.enum(["run", "walk", "bike", "swim", "other"]),
   distanceKm: z.preprocess(nanToUndef, z.number().positive().optional().nullable()) as z.ZodType<number | null | undefined>,
@@ -43,21 +42,17 @@ const cardioSchema = z.object({
 
 type CardioForm = z.infer<typeof cardioSchema>;
 
-// Convert friendly form values to API payload
 function toApiPayload(data: CardioForm) {
   const distanceMeters =
     data.distanceKm != null ? Math.round(data.distanceKm * 1000) : null;
-
   const durationSeconds =
     data.durationMin != null || data.durationSec != null
       ? (data.durationMin ?? 0) * 60 + (data.durationSec ?? 0)
       : null;
-
   const avgPaceSecondsPerKm =
     distanceMeters && durationSeconds && distanceMeters > 0
       ? Math.round(durationSeconds / (distanceMeters / 1000))
       : null;
-
   return {
     type: data.type,
     distanceMeters: distanceMeters || null,
@@ -68,27 +63,87 @@ function toApiPayload(data: CardioForm) {
   };
 }
 
-interface SuggestedDay {
-  planDayId: string;
-  weekIndex: number;
-  dayIndex: number;
-  scheduledDate: string;
+interface PlanDay {
+  id: string;
+  dayNumber: number;
   type: string;
   workoutTemplate: { id: string; name: string } | null;
   cardioTemplate: { id: string; name: string } | null;
 }
 
+interface Microcycle {
+  position: number; // 1-based
+  days: PlanDay[];
+}
+
 interface ActivePlan {
   id: string;
   name: string;
-  suggestedDay: SuggestedDay | null;
+  microcycleLength: number;
+  mesocycleLength: number;
+  startDate: string | null;
+  activatedAt: string | null;
+  microcycles: Microcycle[];
+}
+
+function getDateLabel(date: Date): { label: string; isToday: boolean } {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+  const formatted = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  if (diffDays === 0) return { label: `Today · ${formatted}`, isToday: true };
+  if (diffDays === 1) return { label: `Tomorrow · ${formatted}`, isToday: false };
+  return { label: formatted, isToday: false };
+}
+
+interface NextDay {
+  planDayId: string;
+  weekIndex: number;
+  dayIndex: number;
+  date: Date;
+  cardioTemplate: { id: string; name: string };
+}
+
+function findNextCardioDay(plan: ActivePlan): NextDay | null {
+  if (!plan.activatedAt && !plan.startDate) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const anchor = plan.startDate
+    ? new Date(plan.startDate + "T00:00:00")
+    : new Date(plan.activatedAt!);
+  anchor.setHours(0, 0, 0, 0);
+  const totalDays = plan.microcycleLength * plan.mesocycleLength;
+  const msPerDay = 86_400_000;
+  const daysSinceAnchor = Math.floor((today.getTime() - anchor.getTime()) / msPerDay);
+
+  for (let offset = 0; offset < totalDays; offset++) {
+    const pos = daysSinceAnchor + offset;
+    const weekIndex = Math.floor(pos / plan.microcycleLength) % plan.mesocycleLength;
+    const dayIndex = pos % plan.microcycleLength;
+
+    const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
+    const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
+    if (!day || day.type !== "training" || !day.cardioTemplate) continue;
+
+    const slotD = new Date(anchor);
+    slotD.setDate(slotD.getDate() + pos);
+
+    return {
+      planDayId: day.id,
+      weekIndex,
+      dayIndex,
+      date: slotD,
+      cardioTemplate: day.cardioTemplate,
+    };
+  }
+  return null;
 }
 
 export function CardioPage() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Plan linkage — set when opening modal from a suggestion
   const [planDayId, setPlanDayId] = useState<string | null>(null);
   const [planWeekIndex, setPlanWeekIndex] = useState<number | null>(null);
   const [planDayIndex, setPlanDayIndex] = useState<number | null>(null);
@@ -132,14 +187,16 @@ export function CardioPage() {
     },
   });
 
-  const suggestedDay = activePlan?.suggestedDay;
-  const hasCardio = suggestedDay?.type === "training" && !!suggestedDay.cardioTemplate;
+  const nextCardio = activePlan ? findNextCardioDay(activePlan) : null;
+  const { label: dateLabel, isToday } = nextCardio
+    ? getDateLabel(new Date(nextCardio.date))
+    : { label: "", isToday: false };
 
   function openFromSuggestion() {
-    if (!suggestedDay?.cardioTemplate) return;
-    setPlanDayId(suggestedDay.planDayId);
-    setPlanWeekIndex(suggestedDay.weekIndex);
-    setPlanDayIndex(suggestedDay.dayIndex);
+    if (!nextCardio) return;
+    setPlanDayId(nextCardio.planDayId);
+    setPlanWeekIndex(nextCardio.weekIndex);
+    setPlanDayIndex(nextCardio.dayIndex);
     setModalOpen(true);
   }
 
@@ -180,8 +237,8 @@ export function CardioPage() {
         </Card>
       )}
 
-      {/* Plan suggestion banner */}
-      {hasCardio && suggestedDay && (
+      {/* Plan suggestion — cardio only */}
+      {activePlan && (
         <>
           {/* Post-skip feedback */}
           {skipDay.skipped && (
@@ -192,9 +249,7 @@ export function CardioPage() {
                     <CheckCircle2 className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-amber-800 dark:text-amber-200">
-                      Cardio skipped
-                    </p>
+                    <p className="font-medium text-amber-800 dark:text-amber-200">Cardio skipped</p>
                     <p className="text-sm text-amber-700/70 dark:text-amber-300/70 mt-0.5">
                       Your next planned session is shown below.
                     </p>
@@ -212,66 +267,103 @@ export function CardioPage() {
             </Card>
           )}
 
-          <Card className="border-primary/40 bg-primary/5">
-            <CardContent className="py-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0">
-                    <Activity className="h-4 w-4" />
+          {/* Post-move feedback */}
+          {skipDay.moved && (
+            <Card className="border-emerald-500/30 bg-emerald-500/5">
+              <CardContent className="py-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <CheckCircle2 className="h-4 w-4" />
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                      Today's plan · {activePlan!.name}
-                    </p>
-                    <p className="font-medium truncate">{suggestedDay.cardioTemplate!.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Week {suggestedDay.weekIndex + 1} · Day {suggestedDay.dayIndex + 1}
-                      {suggestedDay.scheduledDate && (
-                        <span className="ml-2">
-                          ·{" "}
-                          {new Date(suggestedDay.scheduledDate + "T00:00:00").toLocaleDateString(
-                            undefined,
-                            { weekday: "short", month: "short", day: "numeric" }
-                          )}
-                        </span>
-                      )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-emerald-800 dark:text-emerald-200">Cardio moved</p>
+                    <p className="text-sm text-emerald-700/70 dark:text-emerald-300/70 mt-0.5">
+                      Your schedule has shifted forward by one day.
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={skipDay.openConfirm}
-                    aria-label="Skip today's cardio"
+                    className="shrink-0 text-emerald-700 hover:text-emerald-900 dark:text-emerald-300"
+                    onClick={skipDay.resetMoved}
                   >
-                    <SkipForward className="h-3.5 w-3.5" />
-                    Skip
-                  </Button>
-                  <Button size="sm" onClick={openFromSuggestion}>
-                    Log cardio
+                    Dismiss
                   </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          <SkipDayModal
-            open={skipDay.confirmOpen}
-            workoutName={suggestedDay.cardioTemplate?.name ?? null}
-            weekIndex={suggestedDay.weekIndex}
-            dayIndex={suggestedDay.dayIndex}
-            isPending={skipDay.isPending}
-            isError={skipDay.isError}
-            onConfirm={() =>
-              skipDay.skip({
-                weekIndex: suggestedDay.weekIndex,
-                dayIndex: suggestedDay.dayIndex,
-                component: "cardio",
-              })
-            }
-            onClose={skipDay.closeConfirm}
-          />
+          {nextCardio ? (
+            <Card className="border-primary/40 bg-primary/5">
+              <CardContent className="py-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0">
+                      <Activity className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                        {isToday ? "Today's plan" : "Upcoming"} · {activePlan.name}
+                      </p>
+                      <p className="font-medium truncate">{nextCardio.cardioTemplate.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Week {nextCardio.weekIndex + 1} · Day {nextCardio.dayIndex + 1}
+                        <span className="ml-2">· {dateLabel}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={skipDay.openConfirm}
+                      disabled={!isToday}
+                      aria-label="Skip today's cardio"
+                    >
+                      <SkipForward className="h-3.5 w-3.5" />
+                      Skip
+                    </Button>
+                    <Button size="sm" onClick={openFromSuggestion} disabled={!isToday}>
+                      Log cardio
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-dashed">
+              <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                No cardio sessions in your plan.
+              </CardContent>
+            </Card>
+          )}
+
+          {nextCardio && isToday && (
+            <SkipDayModal
+              open={skipDay.confirmOpen}
+              workoutName={nextCardio.cardioTemplate.name}
+              weekIndex={nextCardio.weekIndex}
+              dayIndex={nextCardio.dayIndex}
+              isPending={skipDay.isPending}
+              isSkipError={skipDay.isSkipError}
+              isMoveError={skipDay.isMoveError}
+              onSkip={() =>
+                skipDay.skip({
+                  weekIndex: nextCardio.weekIndex,
+                  dayIndex: nextCardio.dayIndex,
+                  component: "cardio",
+                })
+              }
+              onMove={() =>
+                skipDay.move({
+                  weekIndex: nextCardio.weekIndex,
+                  dayIndex: nextCardio.dayIndex,
+                })
+              }
+              onClose={skipDay.closeConfirm}
+            />
+          )}
         </>
       )}
 
@@ -281,7 +373,6 @@ export function CardioPage() {
             No sessions logged yet.
           </p>
         )}
-
         {sessions.map((s) => (
           <Link key={s.id} to={`/cardio/${s.id}`}>
             <Card className="hover:border-primary/40 transition-colors">
@@ -291,14 +382,10 @@ export function CardioPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium capitalize">{s.type}</span>
                       {s.distanceMeters && (
-                        <Badge variant="secondary">
-                          {formatDistance(s.distanceMeters)}
-                        </Badge>
+                        <Badge variant="secondary">{formatDistance(s.distanceMeters)}</Badge>
                       )}
                       {s.avgPaceSecondsPerKm && (
-                        <Badge variant="secondary">
-                          {formatPace(s.avgPaceSecondsPerKm)} /km
-                        </Badge>
+                        <Badge variant="secondary">{formatPace(s.avgPaceSecondsPerKm)} /km</Badge>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-0.5">
@@ -307,16 +394,13 @@ export function CardioPage() {
                         month: "short",
                         day: "numeric",
                       })}
-                      {s.durationSeconds &&
-                        ` · ${formatDuration(s.durationSeconds)}`}
+                      {s.durationSeconds && ` · ${formatDuration(s.durationSeconds)}`}
                       {s.avgHeartRate && ` · ♥ ${s.avgHeartRate} bpm`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {s.caloriesBurned && (
-                      <span className="text-sm text-muted-foreground">
-                        {s.caloriesBurned} kcal
-                      </span>
+                      <span className="text-sm text-muted-foreground">{s.caloriesBurned} kcal</span>
                     )}
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>
@@ -346,8 +430,6 @@ export function CardioPage() {
               <option value="other">Other</option>
             </select>
           </div>
-
-          {/* Distance */}
           <Input
             label="Distance (km)"
             type="number"
@@ -355,8 +437,6 @@ export function CardioPage() {
             placeholder="e.g. 5.00"
             {...register("distanceKm", { valueAsNumber: true })}
           />
-
-          {/* Duration */}
           <div>
             <label className="text-sm font-medium mb-1.5 block">Duration</label>
             <div className="grid grid-cols-2 gap-2">
@@ -377,30 +457,23 @@ export function CardioPage() {
               />
             </div>
           </div>
-
-          {/* Heart rate */}
           <Input
             label="Avg HR (bpm)"
             type="number"
             {...register("avgHeartRate", { valueAsNumber: true })}
           />
-
           <Input
             label="Notes (optional)"
             placeholder="How did it feel?"
             {...register("notes")}
           />
-
           {planDayId && (
             <p className="text-xs text-muted-foreground">
               This session will be linked to your active plan.
             </p>
           )}
-
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" type="button" onClick={closeModal}>
-              Cancel
-            </Button>
+            <Button variant="outline" type="button" onClick={closeModal}>Cancel</Button>
             <Button type="submit" loading={isSubmitting || logMutation.isPending}>
               Log session
             </Button>

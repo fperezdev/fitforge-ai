@@ -6,8 +6,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
-  Bar,
   CartesianGrid,
 } from "recharts";
 import { api } from "@/lib/api";

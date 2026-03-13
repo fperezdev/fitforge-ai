@@ -980,11 +980,11 @@ export function CoachPage() {
 
   const importPlanMutation = useMutation({
     mutationFn: (p: object) => importPlanFromAI(p),
-    onSuccess: (result) => {
+    onSuccess: () => {
       setPlanToSave(null);
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       queryClient.invalidateQueries({ queryKey: ["plans"] });
-      navigate(`/planner/plans/${result.id}`);
+      navigate("/planner");
     },
   });
 

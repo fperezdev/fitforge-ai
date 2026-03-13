@@ -394,6 +394,46 @@ export const planRoutes = new Hono()
     return c.json({ ok: true });
   })
 
+  // Move today's suggested plan day to tomorrow by shifting startDate back 1 day
+  .post("/active/move-day", zValidator("json", z.object({
+    weekIndex: z.number().int().min(0),
+    dayIndex: z.number().int().min(0),
+  })), async (c) => {
+    const userId = getUserId(c);
+    const { weekIndex, dayIndex } = c.req.valid("json");
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.userId, userId), eq(trainingPlans.status, "active")),
+      with: {
+        microcycles: {
+          orderBy: (pm, { asc }) => [asc(pm.position)],
+          with: { days: { orderBy: (pd, { asc }) => [asc(pd.dayNumber)] } },
+        },
+      },
+    });
+
+    if (!plan) return c.json({ error: "No active plan" }, 404);
+
+    const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
+    const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
+    if (!day) return c.json({ error: "Plan day not found" }, 404);
+
+    // Shift startDate back by 1 day so every future slot moves forward by 1
+    const currentAnchor = plan.startDate
+      ? new Date(plan.startDate + "T00:00:00Z")
+      : new Date(plan.activatedAt!);
+    const newAnchor = new Date(currentAnchor.getTime() - 86_400_000);
+    const newStartDate = newAnchor.toISOString().slice(0, 10);
+
+    await db
+      .update(trainingPlans)
+      .set({ startDate: newStartDate })
+      .where(and(eq(trainingPlans.id, plan.id), eq(trainingPlans.userId, userId)));
+
+    return c.json({ ok: true, newStartDate });
+  })
+
   // Get adherence metrics for the active plan
   .get("/active/adherence", async (c) => {
     const userId = getUserId(c);
@@ -558,8 +598,54 @@ export const planRoutes = new Hono()
       }
     }
 
+    // --- Strength sub-metrics ---
+    const strengthWeeks = trainingDaysByWeek.map(({ weekIndex, days }) => {
+      let planned = 0, completed = 0, skipped = 0, missed = 0;
+      for (const { dayIndex: di, hasWorkout } of days) {
+        if (!hasWorkout) continue;
+        const isPast = weekIndex < currentWeekIndex || (weekIndex === currentWeekIndex && di < currentDayIndex);
+        if (!isPast) continue;
+        planned++;
+        const key = `${weekIndex}:${di}`;
+        const statuses = logMap.get(key) ?? [];
+        if (statuses.includes("completed") || statuses.includes("workout_completed")) completed++;
+        else if (statuses.includes("skipped") || statuses.includes("workout_skipped")) skipped++;
+        else missed++;
+      }
+      return { weekIndex, planned, completed, skipped, missed };
+    });
+    const strengthTotals = strengthWeeks.reduce(
+      (acc, w) => ({ planned: acc.planned + w.planned, completed: acc.completed + w.completed, skipped: acc.skipped + w.skipped, missed: acc.missed + w.missed }),
+      { planned: 0, completed: 0, skipped: 0, missed: 0 }
+    );
+
+    // --- Cardio sub-metrics ---
+    const cardioWeeks = trainingDaysByWeek.map(({ weekIndex, days }) => {
+      let planned = 0, completed = 0, skipped = 0, missed = 0;
+      for (const { dayIndex: di, hasCardio } of days) {
+        if (!hasCardio) continue;
+        const isPast = weekIndex < currentWeekIndex || (weekIndex === currentWeekIndex && di < currentDayIndex);
+        if (!isPast) continue;
+        planned++;
+        const key = `${weekIndex}:${di}`;
+        const statuses = logMap.get(key) ?? [];
+        if (statuses.includes("completed") || statuses.includes("cardio_completed")) completed++;
+        else if (statuses.includes("skipped") || statuses.includes("cardio_skipped")) skipped++;
+        else missed++;
+      }
+      return { weekIndex, planned, completed, skipped, missed };
+    });
+    const cardioTotals = cardioWeeks.reduce(
+      (acc, w) => ({ planned: acc.planned + w.planned, completed: acc.completed + w.completed, skipped: acc.skipped + w.skipped, missed: acc.missed + w.missed }),
+      { planned: 0, completed: 0, skipped: 0, missed: 0 }
+    );
+
     return c.json({
       completionRate: Math.round(completionRate * 100) / 100,
+      totalPlanned,
+      totalCompleted,
+      totalSkipped,
+      totalMissed,
       currentStreak,
       longestStreak,
       totalVolume: {
@@ -568,6 +654,8 @@ export const planRoutes = new Hono()
         weightKg: Math.round(totalWeightKg),
       },
       weeks,
+      strength: { ...strengthTotals, weeks: strengthWeeks.filter((w) => w.planned > 0) },
+      cardio: { ...cardioTotals, weeks: cardioWeeks.filter((w) => w.planned > 0) },
     });
   })
 
@@ -722,8 +810,54 @@ export const planRoutes = new Hono()
       }
     }
 
+    // --- Strength sub-metrics ---
+    const strengthWeeks2 = trainingDaysByWeek.map(({ weekIndex, days }) => {
+      let planned = 0, completed = 0, skipped = 0, missed = 0;
+      for (const { dayIndex: di, hasWorkout } of days) {
+        if (!hasWorkout) continue;
+        const isPast = weekIndex < currentWeekIndex || (weekIndex === currentWeekIndex && di < currentDayIndex);
+        if (!isPast) continue;
+        planned++;
+        const key = `${weekIndex}:${di}`;
+        const statuses = logMap.get(key) ?? [];
+        if (statuses.includes("completed") || statuses.includes("workout_completed")) completed++;
+        else if (statuses.includes("skipped") || statuses.includes("workout_skipped")) skipped++;
+        else missed++;
+      }
+      return { weekIndex, planned, completed, skipped, missed };
+    });
+    const strengthTotals2 = strengthWeeks2.reduce(
+      (acc, w) => ({ planned: acc.planned + w.planned, completed: acc.completed + w.completed, skipped: acc.skipped + w.skipped, missed: acc.missed + w.missed }),
+      { planned: 0, completed: 0, skipped: 0, missed: 0 }
+    );
+
+    // --- Cardio sub-metrics ---
+    const cardioWeeks2 = trainingDaysByWeek.map(({ weekIndex, days }) => {
+      let planned = 0, completed = 0, skipped = 0, missed = 0;
+      for (const { dayIndex: di, hasCardio } of days) {
+        if (!hasCardio) continue;
+        const isPast = weekIndex < currentWeekIndex || (weekIndex === currentWeekIndex && di < currentDayIndex);
+        if (!isPast) continue;
+        planned++;
+        const key = `${weekIndex}:${di}`;
+        const statuses = logMap.get(key) ?? [];
+        if (statuses.includes("completed") || statuses.includes("cardio_completed")) completed++;
+        else if (statuses.includes("skipped") || statuses.includes("cardio_skipped")) skipped++;
+        else missed++;
+      }
+      return { weekIndex, planned, completed, skipped, missed };
+    });
+    const cardioTotals2 = cardioWeeks2.reduce(
+      (acc, w) => ({ planned: acc.planned + w.planned, completed: acc.completed + w.completed, skipped: acc.skipped + w.skipped, missed: acc.missed + w.missed }),
+      { planned: 0, completed: 0, skipped: 0, missed: 0 }
+    );
+
     return c.json({
       completionRate: Math.round(completionRate * 100) / 100,
+      totalPlanned,
+      totalCompleted,
+      totalSkipped,
+      totalMissed,
       currentStreak,
       longestStreak,
       totalVolume: {
@@ -732,6 +866,8 @@ export const planRoutes = new Hono()
         weightKg: Math.round(totalWeightKg),
       },
       weeks,
+      strength: { ...strengthTotals2, weeks: strengthWeeks2.filter((w) => w.planned > 0) },
+      cardio: { ...cardioTotals2, weeks: cardioWeeks2.filter((w) => w.planned > 0) },
     });
   })
 
@@ -807,7 +943,24 @@ export const planRoutes = new Hono()
       })),
     };
 
-    return c.json(enriched);
+    // Build a per-slot status map: key = "weekIndex:dayIndex" (0-based), value = worst status
+    // Priority: skipped > completed (so a mixed day surfaces as skipped)
+    const statusPriority = (s: string) => (s.includes("skipped") ? 1 : s.includes("completed") ? 0 : -1);
+    const rawLogs = await db
+      .select({ weekIndex: planDayLogs.weekIndex, dayIndex: planDayLogs.dayIndex, status: planDayLogs.status })
+      .from(planDayLogs)
+      .where(and(eq(planDayLogs.trainingPlanId, plan.id), eq(planDayLogs.userId, userId)));
+
+    const dayLogs: Record<string, string> = {};
+    for (const log of rawLogs) {
+      const key = `${log.weekIndex}:${log.dayIndex}`;
+      const existing = dayLogs[key];
+      if (existing === undefined || statusPriority(log.status) > statusPriority(existing)) {
+        dayLogs[key] = log.status;
+      }
+    }
+
+    return c.json({ ...enriched, dayLogs });
   })
 
   // Create plan — auto-creates microcycles and empty day stubs

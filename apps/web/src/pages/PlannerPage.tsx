@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarRange, Plus } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,12 +7,6 @@ import { z } from "zod";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface TrainingPlan {
-  id: string;
-}
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -31,22 +24,6 @@ type NewPlanForm = z.infer<typeof newPlanSchema>;
 export function PlannerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [ready, setReady] = useState(false);
-
-  const { data: plan, isLoading } = useQuery<TrainingPlan | null>({
-    queryKey: ["plans"],
-    queryFn: () => api.get("/plans"),
-  });
-
-  // Redirect to editor as soon as a plan is known to exist
-  useEffect(() => {
-    if (isLoading) return;
-    if (plan) {
-      navigate(`/planner/plans/${plan.id}`, { replace: true });
-    } else {
-      setReady(true);
-    }
-  }, [isLoading, plan, navigate]);
 
   const {
     register,
@@ -58,20 +35,12 @@ export function PlannerPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: NewPlanForm) => api.post<TrainingPlan>("/plans", data),
-    onSuccess: (created) => {
+    mutationFn: (data: NewPlanForm) => api.post<{ id: string }>("/plans", data),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plans"] });
-      navigate(`/planner/plans/${created.id}`, { replace: true });
+      navigate("/planner", { replace: true });
     },
   });
-
-  if (!ready) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col items-center justify-center py-16 px-4">

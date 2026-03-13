@@ -22,6 +22,7 @@ function formatContext(ctx: CoachContext): string {
       `## Athlete Profile
 - Name: ${p.displayName}
 - Age: ${age !== null ? `${age} years` : "unknown"}
+- Gender: ${p.gender ?? "not specified"}
 - Experience: ${p.experienceLevel ?? "unknown"}
 - Goal: ${p.fitnessGoal ?? "not specified"}
 - Height: ${p.heightCm ? `${p.heightCm} cm` : "unknown"}

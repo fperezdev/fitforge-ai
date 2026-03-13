@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, Activity, SkipForward, CheckCircle2, ChevronRight } from "lucide-react";
+import { Activity, SkipForward, CheckCircle2, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
@@ -98,7 +98,7 @@ export function CardioPage() {
     queryFn: () => api.get("/cardio?limit=30"),
   });
 
-  const { data: activePlan } = useQuery<ActivePlan | null>({
+  const { data: activePlan, isLoading: planLoading } = useQuery<ActivePlan | null>({
     queryKey: ["activePlan"],
     queryFn: () => api.get("/plans/active"),
   });
@@ -143,14 +143,6 @@ export function CardioPage() {
     setModalOpen(true);
   }
 
-  function openFree() {
-    setPlanDayId(null);
-    setPlanWeekIndex(null);
-    setPlanDayIndex(null);
-    reset({ type: "run" });
-    setModalOpen(true);
-  }
-
   function closeModal() {
     setModalOpen(false);
     setPlanDayId(null);
@@ -161,18 +153,32 @@ export function CardioPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Cardio</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {sessions.length} sessions
-          </p>
-        </div>
-        <Button onClick={openFree}>
-          <Plus className="h-4 w-4" />
-          Log session
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold">Cardio</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {sessions.length} sessions
+        </p>
       </div>
+
+      {/* No active plan banner */}
+      {!planLoading && activePlan === null && (
+        <Card className="border-dashed">
+          <CardContent className="py-8 flex flex-col items-center gap-3 text-center">
+            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+              <Activity className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="font-medium">No active training plan</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Activate a plan to start tracking cardio.
+              </p>
+            </div>
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/planner">Go to Plans</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Plan suggestion banner */}
       {hasCardio && suggestedDay && (
@@ -271,11 +277,9 @@ export function CardioPage() {
 
       <div className="space-y-3">
         {sessions.length === 0 && (
-          <Card>
-            <CardContent className="py-16 text-center text-muted-foreground">
-              No cardio sessions yet. Log your first run!
-            </CardContent>
-          </Card>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No sessions logged yet.
+          </p>
         )}
 
         {sessions.map((s) => (

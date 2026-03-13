@@ -187,19 +187,8 @@ function ActivePlanCard({ plan }: { plan: ActivePlan }) {
                 <Dumbbell className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                 <span className="text-sm font-medium truncate">{day.workoutTemplate!.name}</span>
               </div>
-              <Button size="sm" asChild className="shrink-0">
-                <Link
-                  to="/workout/new"
-                  state={{
-                    templateId: day.workoutTemplate!.id,
-                    templateName: day.workoutTemplate!.name,
-                    planDayId: day.planDayId,
-                    weekIndex: day.weekIndex,
-                    dayIndex: day.dayIndex,
-                  }}
-                >
-                  Start
-                </Link>
+              <Button size="sm" variant="outline" asChild className="shrink-0">
+                <Link to="/workout">Go to Workout</Link>
               </Button>
             </div>
           )}

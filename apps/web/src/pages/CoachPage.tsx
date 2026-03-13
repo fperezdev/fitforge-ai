@@ -43,6 +43,7 @@ interface Message {
 interface UserProfile {
   displayName: string;
   dateOfBirth: string | null;
+  gender: string | null;
   heightCm: string | number | null;
   fitnessGoal: string | null;
   experienceLevel: string | null;
@@ -388,6 +389,7 @@ function FailedMessageBubble({
 type GateField =
   | "displayName"
   | "dateOfBirth"
+  | "gender"
   | "heightCm"
   | "weight"
   | "fitnessGoal"
@@ -396,6 +398,7 @@ type GateField =
 const GATE_FIELDS: GateField[] = [
   "displayName",
   "dateOfBirth",
+  "gender",
   "heightCm",
   "weight",
   "fitnessGoal",
@@ -405,6 +408,7 @@ const GATE_FIELDS: GateField[] = [
 const FIELD_LABELS: Record<GateField, string> = {
   displayName: "your display name",
   dateOfBirth: "your date of birth",
+  gender: "your gender",
   heightCm: "your height",
   weight: "your current weight",
   fitnessGoal: "your primary fitness goal",
@@ -414,6 +418,7 @@ const FIELD_LABELS: Record<GateField, string> = {
 const FIELD_PROMPTS: Record<GateField, string> = {
   displayName: "What should we call you?",
   dateOfBirth: "What is your date of birth?",
+  gender: "What is your gender?",
   heightCm: "What is your height (in cm)?",
   weight: "What is your current weight (in kg)?",
   fitnessGoal: "What is your primary fitness goal?",
@@ -513,9 +518,15 @@ function ProfileGate({
     profileMutation.mutate({ [currentField]: val });
   }
 
-  const isSelect = currentField === "fitnessGoal" || currentField === "experienceLevel";
+  const isSelect = currentField === "fitnessGoal" || currentField === "experienceLevel" || currentField === "gender";
 
   const selectOptions: Record<string, { value: string; label: string }[]> = {
+    gender: [
+      { value: "male", label: "Male" },
+      { value: "female", label: "Female" },
+      { value: "other", label: "Other" },
+      { value: "prefer_not_to_say", label: "Prefer not to say" },
+    ],
     fitnessGoal: [
       { value: "hypertrophy", label: "Muscle Building" },
       { value: "strength", label: "Strength" },
@@ -918,6 +929,7 @@ export function CoachPage() {
     !!profile &&
     !!profile.displayName &&
     !!profile.dateOfBirth &&
+    !!profile.gender &&
     (!!profile.heightCm || profile.heightCm === 0) &&
     hasWeight &&
     !!profile.fitnessGoal &&

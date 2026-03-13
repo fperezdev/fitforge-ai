@@ -571,6 +571,170 @@ export const planRoutes = new Hono()
     });
   })
 
+  // Get adherence metrics for a specific plan by ID
+  .get("/:id/adherence", async (c) => {
+    const userId = getUserId(c);
+    const { id } = c.req.param();
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.id, id), eq(trainingPlans.userId, userId)),
+      with: {
+        microcycles: {
+          orderBy: (pm, { asc }) => [asc(pm.position)],
+          with: { days: { orderBy: (pd, { asc }) => [asc(pd.dayNumber)] } },
+        },
+      },
+    });
+
+    if (!plan || !plan.activatedAt) return c.json(null);
+
+    const msPerDay = 86_400_000;
+    const daysSince = Math.floor((Date.now() - new Date(plan.activatedAt).getTime()) / msPerDay);
+    const currentWeekIndex = Math.floor(daysSince / plan.microcycleLength) % plan.mesocycleLength;
+    const currentDayIndex = daysSince % plan.microcycleLength;
+
+    const logs = await db.query.planDayLogs.findMany({
+      where: and(eq(planDayLogs.trainingPlanId, plan.id), eq(planDayLogs.userId, userId)),
+    });
+
+    const logMap = new Map<string, string[]>();
+    for (const l of logs) {
+      const key = `${l.weekIndex}:${l.dayIndex}`;
+      const arr = logMap.get(key) ?? [];
+      arr.push(l.status);
+      logMap.set(key, arr);
+    }
+
+    function isDayCompleted(key: string, hasWorkout: boolean, hasCardio: boolean): boolean {
+      const statuses = logMap.get(key) ?? [];
+      if (statuses.includes("completed")) return true;
+      const workoutDone = !hasWorkout || statuses.includes("workout_completed");
+      const cardioDone = !hasCardio || statuses.includes("cardio_completed");
+      return workoutDone && cardioDone;
+    }
+
+    function isDaySkipped(key: string): boolean {
+      const statuses = logMap.get(key) ?? [];
+      return statuses.includes("skipped") || statuses.includes("workout_skipped") || statuses.includes("cardio_skipped");
+    }
+
+    const trainingDaysByWeek = plan.microcycles.map((mc) => ({
+      weekIndex: mc.position - 1,
+      days: mc.days
+        .filter((d) => d.type === "training")
+        .map((d) => ({
+          dayIndex: d.dayNumber - 1,
+          hasWorkout: !!d.workoutTemplateId,
+          hasCardio: !!d.cardioTemplateId,
+        })),
+    }));
+
+    let totalPlanned = 0;
+    let totalCompleted = 0;
+    let totalSkipped = 0;
+    let totalMissed = 0;
+
+    const weeks = trainingDaysByWeek.map(({ weekIndex, days }) => {
+      let planned = 0;
+      let completed = 0;
+      let skipped = 0;
+      let missed = 0;
+
+      for (const { dayIndex: di, hasWorkout, hasCardio } of days) {
+        const isPast =
+          weekIndex < currentWeekIndex ||
+          (weekIndex === currentWeekIndex && di < currentDayIndex);
+        if (!isPast) continue;
+
+        planned++;
+        const key = `${weekIndex}:${di}`;
+        if (isDayCompleted(key, hasWorkout, hasCardio)) completed++;
+        else if (isDaySkipped(key)) skipped++;
+        else missed++;
+      }
+
+      return { weekIndex, planned, completed, skipped, missed };
+    });
+
+    for (const w of weeks) {
+      totalPlanned += w.planned;
+      totalCompleted += w.completed;
+      totalSkipped += w.skipped;
+      totalMissed += w.missed;
+    }
+
+    const completionRate = totalPlanned > 0 ? totalCompleted / totalPlanned : 0;
+
+    type DayOccurrence = { weekIndex: number; dayIndex: number; hasWorkout: boolean; hasCardio: boolean };
+    const pastTrainingDays: DayOccurrence[] = [];
+
+    for (const { weekIndex, days } of trainingDaysByWeek) {
+      for (const { dayIndex: di, hasWorkout, hasCardio } of days) {
+        const isPast =
+          weekIndex < currentWeekIndex ||
+          (weekIndex === currentWeekIndex && di < currentDayIndex);
+        if (isPast) pastTrainingDays.push({ weekIndex, dayIndex: di, hasWorkout, hasCardio });
+      }
+    }
+
+    pastTrainingDays.sort((a, b) =>
+      a.weekIndex !== b.weekIndex ? a.weekIndex - b.weekIndex : a.dayIndex - b.dayIndex
+    );
+
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let runningStreak = 0;
+
+    for (const { weekIndex, dayIndex, hasWorkout, hasCardio } of pastTrainingDays) {
+      const key = `${weekIndex}:${dayIndex}`;
+      if (isDayCompleted(key, hasWorkout, hasCardio)) {
+        runningStreak++;
+        if (runningStreak > longestStreak) longestStreak = runningStreak;
+      } else {
+        runningStreak = 0;
+      }
+    }
+    currentStreak = runningStreak;
+
+    const completedSessionIds = logs
+      .filter((l) => (l.status === "completed" || l.status === "workout_completed") && l.workoutSessionId)
+      .map((l) => l.workoutSessionId as string);
+
+    let totalSets = 0;
+    let totalReps = 0;
+    let totalWeightKg = 0;
+
+    if (completedSessionIds.length > 0) {
+      for (const sessionId of completedSessionIds) {
+        const entries = await db.query.exerciseEntries.findMany({
+          where: eq(exerciseEntries.workoutSessionId, sessionId),
+          with: { sets: true },
+        });
+        for (const entry of entries) {
+          for (const s of entry.sets) {
+            if (!s.completed) continue;
+            totalSets++;
+            totalReps += s.reps ?? 0;
+            totalWeightKg += (s.reps ?? 0) * Number(s.weightKg ?? 0);
+          }
+        }
+      }
+    }
+
+    return c.json({
+      completionRate: Math.round(completionRate * 100) / 100,
+      currentStreak,
+      longestStreak,
+      totalVolume: {
+        sets: totalSets,
+        reps: totalReps,
+        weightKg: Math.round(totalWeightKg),
+      },
+      weeks,
+    });
+  })
+
   // Get single plan with full structure
   .get("/:id", async (c) => {
     const userId = getUserId(c);

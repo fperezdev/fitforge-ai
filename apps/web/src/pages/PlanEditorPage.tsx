@@ -1012,9 +1012,10 @@ function PlanView({
       setPendingOrder(order);
       setIsReordering(false);
     },
-    onError: () => {
-      // Roll back: clear pending and re-enter reorder mode so the user can retry
-      setPendingOrder(null);
+    onError: (_err, order) => {
+      // Keep pendingOrder so the grid stays at the attempted order while the
+      // user decides what to do. Re-enter reorder mode so they can retry or cancel.
+      setPendingOrder(order);
       setIsReordering(true);
     },
     onSuccess: () => {
@@ -1037,20 +1038,26 @@ function PlanView({
     reorderDaysMutation.mutate(localDayOrder);
   };
 
-  // Pick any microcycle's day data for the drag overlay (first week is fine)
-  const firstMc = plan.microcycles[0];
+  // Pick the day data for the drag overlay from the first microcycle that has it configured,
+  // so the ghost reflects real content rather than always defaulting to week 1.
   const activeDayStub = activeId != null
-    ? (firstMc?.days.find((d) => d.dayNumber === activeId) ?? {
-        id: `stub-overlay-${activeId}`,
-        planMicrocycleId: firstMc?.id ?? "",
-        dayNumber: activeId,
-        type: "training" as DayType,
-        workoutTemplateId: null,
-        workoutTemplate: null,
-        cardioTemplateId: null,
-        cardioTemplate: null,
-        notes: null,
-      })
+    ? (() => {
+        const mcWithDay = plan.microcycles.find((mc) => mc.days.some((d) => d.dayNumber === activeId));
+        if (mcWithDay) {
+          return mcWithDay.days.find((d) => d.dayNumber === activeId) ?? null;
+        }
+        return {
+          id: `stub-overlay-${activeId}`,
+          planMicrocycleId: plan.microcycles[0]?.id ?? "",
+          dayNumber: activeId,
+          type: "training" as DayType,
+          workoutTemplateId: null,
+          workoutTemplate: null,
+          cardioTemplateId: null,
+          cardioTemplate: null,
+          notes: null,
+        };
+      })()
     : null;
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -1133,9 +1140,23 @@ function PlanView({
                         autoFocus
                         value={editingName}
                         onChange={(e) => setEditingName(e.target.value)}
-                        onBlur={() => renameMutation.mutate({ mcId: mc.id, name: editingName })}
+                        onBlur={() => {
+                          const original = mc.name ?? `Week ${mc.position}`;
+                          if (editingName.trim() && editingName !== original) {
+                            renameMutation.mutate({ mcId: mc.id, name: editingName });
+                          } else {
+                            setEditingMcId(null);
+                          }
+                        }}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") renameMutation.mutate({ mcId: mc.id, name: editingName });
+                          if (e.key === "Enter") {
+                            const original = mc.name ?? `Week ${mc.position}`;
+                            if (editingName.trim() && editingName !== original) {
+                              renameMutation.mutate({ mcId: mc.id, name: editingName });
+                            } else {
+                              setEditingMcId(null);
+                            }
+                          }
                           if (e.key === "Escape") setEditingMcId(null);
                         }}
                         className="h-7 rounded-md border border-border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1241,7 +1262,7 @@ function PlanView({
               templates={templates}
               cardioTemplates={cardioTemplates}
               planId={plan.id}
-              micId={firstMc?.id ?? ""}
+              micId={activeDayStub.planMicrocycleId}
               isLocked={false}
               isDraggable={false}
               isOverlay
@@ -1448,64 +1469,92 @@ function DayView({
         return;
       }
 
-      // 2. Save strength template (upsert)
+      // 2. Save strength template (upsert or delete)
       let workoutTemplateId = dayData.workoutTemplateId;
-      const strengthPayload = {
-        name: strengthTemplate?.name ?? `W${selectedWeek} D${selectedDay} Strength`,
-        description: null,
-        exercises: strengthRows.map((r, i) => ({
-          exerciseId: r.exerciseId,
-          order: i + 1,
-          targetSets: r.sets,
-          targetRepMin: r.repMin,
-          targetRepMax: r.repMax,
-          rir: r.rir ?? null,
-          restSeconds: r.restSeconds ?? null,
-        })),
-      };
 
       if (strengthRows.length > 0) {
-        if (workoutTemplateId) {
-          await api.put(`/templates/${workoutTemplateId}`, strengthPayload);
-        } else {
-          const created: Template = await api.post("/templates", strengthPayload);
-          workoutTemplateId = created.id;
+        const strengthPayload = {
+          name: strengthTemplate?.name ?? `W${selectedWeek} D${selectedDay} Strength`,
+          description: null,
+          exercises: strengthRows.map((r, i) => ({
+            exerciseId: r.exerciseId,
+            order: i + 1,
+            targetSets: r.sets,
+            targetRepMin: r.repMin,
+            targetRepMax: r.repMax,
+            rir: r.rir ?? null,
+            restSeconds: r.restSeconds ?? null,
+          })),
+        };
+        try {
+          if (workoutTemplateId) {
+            await api.put(`/templates/${workoutTemplateId}`, strengthPayload);
+          } else {
+            const created: Template = await api.post("/templates", strengthPayload);
+            workoutTemplateId = created.id;
+          }
+        } catch {
+          throw new Error("Failed to save strength workout. Please try again.");
         }
       } else {
+        // All exercises removed — delete the orphaned template
+        if (workoutTemplateId) {
+          try {
+            await api.delete(`/templates/${workoutTemplateId}`);
+          } catch {
+            // Non-fatal: template may already be gone; proceed
+          }
+        }
         workoutTemplateId = null;
       }
 
-      // 3. Save cardio template (upsert)
+      // 3. Save cardio template (upsert or delete)
       let cardioTemplateId = dayData.cardioTemplateId;
-      const cardioPayload = {
-        name: cardioTemplate?.name ?? `W${selectedWeek} D${selectedDay} Cardio`,
-        description: null,
-        exercises: cardioRows.map((r, i) => ({
-          name: r.name || "Cardio",
-          zone: r.zone ?? null,
-          kilometers: r.kilometers ?? null,
-          order: i + 1,
-        })),
-      };
 
       if (cardioRows.length > 0) {
-        if (cardioTemplateId) {
-          await api.put(`/cardio-templates/${cardioTemplateId}`, cardioPayload);
-        } else {
-          const created: CardioTemplate = await api.post("/cardio-templates", cardioPayload);
-          cardioTemplateId = created.id;
+        const cardioPayload = {
+          name: cardioTemplate?.name ?? `W${selectedWeek} D${selectedDay} Cardio`,
+          description: null,
+          exercises: cardioRows.map((r, i) => ({
+            name: r.name || "Cardio",
+            zone: r.zone ?? null,
+            kilometers: r.kilometers ?? null,
+            order: i + 1,
+          })),
+        };
+        try {
+          if (cardioTemplateId) {
+            await api.put(`/cardio-templates/${cardioTemplateId}`, cardioPayload);
+          } else {
+            const created: CardioTemplate = await api.post("/cardio-templates", cardioPayload);
+            cardioTemplateId = created.id;
+          }
+        } catch {
+          throw new Error("Failed to save cardio workout. Please try again.");
         }
       } else {
+        // All activities removed — delete the orphaned template
+        if (cardioTemplateId) {
+          try {
+            await api.delete(`/cardio-templates/${cardioTemplateId}`);
+          } catch {
+            // Non-fatal: template may already be gone; proceed
+          }
+        }
         cardioTemplateId = null;
       }
 
       // 4. Link templates to the plan day
-      await api.put(`/plans/${plan.id}/microcycles/${mc?.id}/days/${dayData.dayNumber}`, {
-        type: "training",
-        workoutTemplateId: workoutTemplateId ?? null,
-        cardioTemplateId: cardioTemplateId ?? null,
-        notes: dayData.notes,
-      });
+      try {
+        await api.put(`/plans/${plan.id}/microcycles/${mc?.id}/days/${dayData.dayNumber}`, {
+          type: "training",
+          workoutTemplateId: workoutTemplateId ?? null,
+          cardioTemplateId: cardioTemplateId ?? null,
+          notes: dayData.notes,
+        });
+      } catch {
+        throw new Error("Workout saved but failed to link to the plan day. Please try again.");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
@@ -1513,6 +1562,12 @@ function DayView({
       queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
       setIsDirty(false);
       setIsEditing(false);
+    },
+    onError: () => {
+      // Refresh to sync any partial state that was committed before the failure
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
     },
   });
 
@@ -1525,7 +1580,11 @@ function DayView({
           {plan.microcycles.map((m) => (
             <button
               key={m.id}
-              onClick={() => { setSelectedWeek(m.position); setSelectedDay(1); }}
+              onClick={() => {
+                setSelectedWeek(m.position);
+                // Preserve the current day if it exists in the new week; else reset to 1
+                if (selectedDay > plan.microcycleLength) setSelectedDay(1);
+              }}
               className={cn(
                 "rounded-md px-3 py-1.5 text-sm font-medium border transition-colors",
                 selectedWeek === m.position
@@ -1687,7 +1746,11 @@ function DayView({
         {isEditing && (
           <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
             {saveMutation.isError && (
-              <p className="text-xs text-destructive">Save failed — try again.</p>
+              <p className="text-xs text-destructive">
+                {saveMutation.error instanceof Error
+                  ? saveMutation.error.message
+                  : "Save failed — try again."}
+              </p>
             )}
             {!saveMutation.isError && (
               <span className="text-xs text-muted-foreground">
@@ -1728,10 +1791,10 @@ interface Adherence {
   weeks: AdherenceWeek[];
 }
 
-function PlanAdherenceCard() {
+function PlanAdherenceCard({ planId }: { planId: string }) {
   const { data: adherence, isLoading } = useQuery<Adherence | null>({
-    queryKey: ["planAdherence"],
-    queryFn: () => api.get("/plans/active/adherence"),
+    queryKey: ["planAdherence", planId],
+    queryFn: () => api.get(`/plans/${planId}/adherence`),
     staleTime: 60_000,
   });
 
@@ -1963,7 +2026,7 @@ export function PlanEditorPage() {
   const [dayViewDay, setDayViewDay] = useState<number | undefined>();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
-  const { data: plan, isLoading } = useQuery<TrainingPlan>({
+  const { data: plan, isLoading, isError, refetch } = useQuery<TrainingPlan>({
     queryKey: ["plan", id],
     queryFn: () => api.get(`/plans/${id}`),
     enabled: !!id,
@@ -1986,6 +2049,17 @@ export function PlanEditorPage() {
     queryKey: ["cardio-templates"],
     queryFn: () => api.get("/cardio-templates"),
   });
+
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+        <p className="text-sm text-destructive font-medium">Failed to load plan.</p>
+        <Button size="sm" variant="outline" onClick={() => refetch()}>
+          Try again
+        </Button>
+      </div>
+    );
+  }
 
   if (isLoading || !plan) {
     return (
@@ -2036,7 +2110,7 @@ export function PlanEditorPage() {
       <PlanStatusBanner plan={plan} />
 
       {/* Adherence metrics — active plans only */}
-      {plan.status === "active" && <PlanAdherenceCard />}
+      {plan.status === "active" && <PlanAdherenceCard planId={plan.id} />}
 
       {/* View switcher */}
       <div

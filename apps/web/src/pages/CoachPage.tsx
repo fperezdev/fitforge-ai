@@ -914,12 +914,12 @@ export function CoachPage() {
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
-  const { data: profile } = useQuery<UserProfile>({
+  const { data: profile, isLoading: isProfileLoading } = useQuery<UserProfile>({
     queryKey: ["me/profile"],
     queryFn: () => api.get<UserProfile>("/me/profile"),
   });
 
-  const { data: weightEntries = [] } = useQuery<WeightEntry[]>({
+  const { data: weightEntries = [], isLoading: isWeightLoading } = useQuery<WeightEntry[]>({
     queryKey: ["weight"],
     queryFn: () => api.get<WeightEntry[]>("/body/weight?limit=1"),
   });
@@ -1193,7 +1193,11 @@ export function CoachPage() {
       {/* Main chat area */}
       <div className="flex-1 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
         {/* Profile gate */}
-        {!profileComplete ? (
+        {isProfileLoading || isWeightLoading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : !profileComplete ? (
           <ProfileGate
             profile={profile}
             hasWeight={hasWeight}

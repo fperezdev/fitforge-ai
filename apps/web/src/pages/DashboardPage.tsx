@@ -7,7 +7,6 @@ import {
   ArrowRight,
   ListChecks,
   BedDouble,
-  SkipForward,
   CheckCircle2,
   Activity,
 } from "lucide-react";
@@ -166,18 +165,7 @@ function ActivePlanCard({ plan }: { plan: ActivePlan }) {
               </div>
             </div>
 
-            {isTraining && day && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={skipDay.openConfirm}
-                aria-label="Skip today's day"
-                className="shrink-0"
-              >
-                <SkipForward className="h-3.5 w-3.5" />
-                Skip
-              </Button>
-            )}
+
           </div>
 
           {/* Workout row */}
@@ -302,11 +290,6 @@ export function DashboardPage() {
       <div>
         <h2 className="font-semibold mb-3">Quick actions</h2>
         <div className="flex flex-wrap gap-3">
-          <Button variant="outline" asChild>
-            <Link to="/cardio">
-              Log run
-            </Link>
-          </Button>
           <Button variant="outline" asChild>
             <Link to="/coach">
               Ask AI coach

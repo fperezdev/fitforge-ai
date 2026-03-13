@@ -111,7 +111,6 @@ export async function buildCoachContext(
         sets: e.sets?.map((set: any) => ({
           ...set,
           weightKg: set.weightKg ? Number(set.weightKg) : null,
-          rpe: set.rpe ? Number(set.rpe) : null,
         })),
       })),
     })),

@@ -94,7 +94,7 @@ function formatContext(ctx: CoachContext): string {
 }
 
 const SYSTEM_PROMPT = `You are FitForge AI, an expert personal trainer and running coach with deep knowledge of:
-- Hypertrophy training (progressive overload, volume, RIR/RPE, exercise selection, periodisation)
+- Hypertrophy training (progressive overload, volume, RIR, exercise selection, periodisation)
 - Running training (aerobic base, tempo runs, intervals, pace zones, race preparation)
 - Nutrition basics for body recomposition
 - Recovery, deload, and injury prevention

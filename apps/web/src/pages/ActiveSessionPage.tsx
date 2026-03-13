@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
 import { cn } from "@/lib/utils";
 
 interface Session {
@@ -17,6 +18,10 @@ interface Session {
   exerciseEntries: Array<{
     id: string;
     order: number;
+    targetRepMin: number | null;
+    targetRepMax: number | null;
+    targetRir: number | null;
+    restSeconds: number | null;
     exercise: { id: string; name: string; primaryMuscle: string };
     sets: Array<{
       id: string;
@@ -24,7 +29,7 @@ interface Session {
       type: string;
       weightKg: string | null;
       reps: number | null;
-      rpe: number | null;
+      rir: number | null;
       completed: boolean;
     }>;
   }>;
@@ -32,12 +37,24 @@ interface Session {
 
 function RestTimer({ seconds, onDone }: { seconds: number; onDone: () => void }) {
   const [remaining, setRemaining] = useState(seconds);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
 
   useEffect(() => {
-    if (remaining <= 0) { onDone(); return; }
-    const t = setTimeout(() => setRemaining((r) => r - 1), 1000);
-    return () => clearTimeout(t);
-  }, [remaining, onDone]);
+    const end = Date.now() + seconds * 1000;
+    const t = setInterval(() => {
+      const left = Math.round((end - Date.now()) / 1000);
+      if (left <= 0) {
+        clearInterval(t);
+        setRemaining(0);
+        onDoneRef.current();
+      } else {
+        setRemaining(left);
+      }
+    }, 500);
+    return () => clearInterval(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const pct = (remaining / seconds) * 100;
 
@@ -64,17 +81,33 @@ function RestTimer({ seconds, onDone }: { seconds: number; onDone: () => void })
 
 function SetRow({
   set,
+  repMin,
+  repMax,
+  targetRir,
   onUpdate,
 }: {
   set: Session["exerciseEntries"][0]["sets"][0];
+  repMin: number | null;
+  repMax: number | null;
+  targetRir: number | null;
   onUpdate: (data: Partial<typeof set>) => void;
 }) {
   const [weight, setWeight] = useState(set.weightKg ?? "");
   const [reps, setReps] = useState(String(set.reps ?? ""));
+  const [rir, setRir] = useState(set.rir != null ? String(set.rir) : "");
+
+  const repPlaceholder =
+    repMin != null && repMax != null
+      ? repMin === repMax
+        ? String(repMin)
+        : `${repMin}–${repMax}`
+      : "reps";
+
+  const rirPlaceholder = targetRir != null ? String(targetRir) : "RIR";
 
   return (
     <div className={cn(
-      "grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 items-center py-1.5",
+      "grid grid-cols-[2rem_1fr_1fr_1fr_2rem] gap-2 items-center py-1.5",
       set.completed && "opacity-60"
     )}>
       <span className="text-xs text-muted-foreground font-mono text-center">
@@ -94,9 +127,20 @@ function SetRow({
         value={reps}
         onChange={(e) => setReps(e.target.value)}
         onBlur={() => onUpdate({ reps: reps ? Number(reps) : null })}
-        placeholder="reps"
+        placeholder={repPlaceholder}
         className="h-8 w-full rounded border border-border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         aria-label={`Set ${set.setNumber} reps`}
+      />
+      <input
+        type="number"
+        min={0}
+        max={10}
+        value={rir}
+        onChange={(e) => setRir(e.target.value)}
+        onBlur={() => onUpdate({ rir: rir !== "" ? Number(rir) : null })}
+        placeholder={rirPlaceholder}
+        className="h-8 w-full rounded border border-border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+        aria-label={`Set ${set.setNumber} RIR`}
       />
       <button
         onClick={() => onUpdate({ completed: !set.completed })}
@@ -121,6 +165,7 @@ export function ActiveSessionPage() {
   const [elapsed, setElapsed] = useState(0);
   const [restTimer, setRestTimer] = useState<{ seconds: number } | null>(null);
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
+  const [finishModal, setFinishModal] = useState(false);
 
   const { data: session, isLoading } = useQuery<Session>({
     queryKey: ["session", id],
@@ -200,8 +245,7 @@ export function ActiveSessionPage() {
         <Button
           variant="destructive"
           size="sm"
-          onClick={() => finishMutation.mutate()}
-          loading={finishMutation.isPending}
+          onClick={() => setFinishModal(true)}
         >
           <StopCircle className="h-4 w-4" />
           Finish
@@ -264,16 +308,11 @@ export function ActiveSessionPage() {
                 {isExpanded && (
                   <CardContent className="pt-0 space-y-1">
                     {/* Column headers */}
-                    <div className="grid grid-cols-[2rem_1fr_1fr_2rem] gap-2 mb-1">
-                      <span className="text-xs text-muted-foreground text-center">
-                        Set
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        Weight
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        Reps
-                      </span>
+                    <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem] gap-2 mb-1">
+                      <span className="text-xs text-muted-foreground text-center">Set</span>
+                      <span className="text-xs text-muted-foreground">Weight</span>
+                      <span className="text-xs text-muted-foreground">Reps</span>
+                      <span className="text-xs text-muted-foreground">RIR</span>
                       <span />
                     </div>
 
@@ -281,9 +320,12 @@ export function ActiveSessionPage() {
                       <SetRow
                         key={set.id}
                         set={set}
+                        repMin={entry.targetRepMin}
+                        repMax={entry.targetRepMax}
+                        targetRir={entry.targetRir}
                         onUpdate={(data) => {
-                          // Start rest timer on completion
-                          if (data.completed) setRestTimer({ seconds: 90 });
+                          // Start rest timer on completion — use template value or fall back to 90s
+                          if (data.completed) setRestTimer({ seconds: entry.restSeconds ?? 90 });
                           updateSetMutation.mutate({
                             entryId: entry.id,
                             setId: set.id,
@@ -314,6 +356,32 @@ export function ActiveSessionPage() {
             );
           })}
       </div>
+
+      <Modal
+        open={finishModal}
+        onClose={() => setFinishModal(false)}
+        title="Finish workout?"
+      >
+        <p className="text-sm text-muted-foreground mb-6">
+          {completedSets}/{totalSets} sets completed. This will mark the session
+          as done and return you to the workout page.
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button variant="ghost" onClick={() => setFinishModal(false)}>
+            Keep going
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              setFinishModal(false);
+              finishMutation.mutate();
+            }}
+            loading={finishMutation.isPending}
+          >
+            Finish
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

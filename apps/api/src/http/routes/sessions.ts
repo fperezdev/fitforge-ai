@@ -10,6 +10,10 @@ import {
   exercises,
   workoutTemplates,
   templateExercises,
+  trainingPlans,
+  planMicrocycles,
+  planDays,
+  planDayLogs,
 } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
 import { authMiddleware, getUserId } from "../middleware/auth.js";
@@ -17,6 +21,10 @@ import { authMiddleware, getUserId } from "../middleware/auth.js";
 const startSessionSchema = z.object({
   name: z.string().optional().nullable(),
   templateId: z.string().uuid().optional(),
+  // Plan linkage — required when an active plan exists
+  planDayId: z.string().uuid().optional(),
+  weekIndex: z.number().int().min(0).optional(),
+  dayIndex: z.number().int().min(0).optional(),
 });
 
 const addExerciseSchema = z.object({
@@ -29,7 +37,6 @@ const logSetSchema = z.object({
   type: z.enum(["warmup", "working", "dropset", "failure"]).default("working"),
   weightKg: z.number().optional().nullable(),
   reps: z.number().int().optional().nullable(),
-  rpe: z.number().min(1).max(10).optional().nullable(),
   rir: z.number().int().min(0).optional().nullable(),
   durationSeconds: z.number().int().optional().nullable(),
   restSeconds: z.number().int().optional().nullable(),
@@ -83,15 +90,62 @@ export const sessionRoutes = new Hono()
     const data = c.req.valid("json");
     const db = getDb();
 
+    // Guard: require an active plan to start a session
+    const activePlan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.userId, userId), eq(trainingPlans.status, "active")),
+    });
+
+    if (!activePlan) {
+      return c.json(
+        { error: "No active training plan. Activate a plan to start a workout." },
+        403
+      );
+    }
+
+    // Guard: planDayId must be provided and must belong to the active plan
+    if (!data.planDayId || data.weekIndex == null || data.dayIndex == null) {
+      return c.json(
+        { error: "planDayId, weekIndex, and dayIndex are required." },
+        400
+      );
+    }
+
+    // Validate the planDayId belongs to the user's active plan
+    const planDay = await db.query.planDays.findFirst({
+      where: eq(planDays.id, data.planDayId),
+      with: { microcycle: { with: { trainingPlan: true } } },
+    });
+
+    if (!planDay || planDay.microcycle.trainingPlan.id !== activePlan.id) {
+      return c.json({ error: "Invalid plan day for active plan." }, 400);
+    }
+
     const [session] = await db
       .insert(workoutSessions)
       .values({
         userId,
-        name: data.name,
+        name: data.name ?? null,
         status: "in_progress",
         startedAt: new Date(),
+        planDayId: data.planDayId,
+        weekIndex: data.weekIndex,
+        dayIndex: data.dayIndex,
       })
       .returning();
+
+    // Record the plan day log as workout_completed (cardio component tracked separately)
+    await db
+      .insert(planDayLogs)
+      .values({
+        userId,
+        trainingPlanId: activePlan.id,
+        planDayId: data.planDayId,
+        weekIndex: data.weekIndex,
+        dayIndex: data.dayIndex,
+        status: "workout_completed",
+        workoutSessionId: session.id,
+      })
+      .onConflictDoNothing();
 
     // Seed exercises from template when templateId is provided
     if (data.templateId) {
@@ -108,6 +162,14 @@ export const sessionRoutes = new Hono()
       });
 
       if (template && template.templateExercises.length > 0) {
+        // Use the template name as the session name if none was provided
+        if (!session.name) {
+          await db
+            .update(workoutSessions)
+            .set({ name: template.name })
+            .where(eq(workoutSessions.id, session.id));
+          session.name = template.name;
+        }
         const entries = await db
           .insert(exerciseEntries)
           .values(
@@ -115,6 +177,10 @@ export const sessionRoutes = new Hono()
               workoutSessionId: session.id,
               exerciseId: te.exerciseId,
               order: te.order,
+              targetRepMin: te.targetRepMin,
+              targetRepMax: te.targetRepMax,
+              targetRir: te.rir,
+              restSeconds: te.restSeconds,
             }))
           )
           .returning();

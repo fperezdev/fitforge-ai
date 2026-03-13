@@ -7,6 +7,10 @@ import {
   cardioSplits,
   weightEntries,
   bodyMeasurements,
+  planDayLogs,
+  planDays,
+  planMicrocycles,
+  trainingPlans,
 } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
 import { authMiddleware, getUserId } from "../middleware/auth.js";
@@ -25,6 +29,10 @@ const createCardioSchema = z.object({
   caloriesBurned: z.number().int().optional().nullable(),
   elevationGainMeters: z.number().int().optional().nullable(),
   notes: z.string().optional().nullable(),
+  // Plan linkage — optional, provided when logging from a plan suggestion
+  planDayId: z.string().uuid().optional().nullable(),
+  weekIndex: z.number().int().min(0).optional().nullable(),
+  dayIndex: z.number().int().min(0).optional().nullable(),
   splits: z
     .array(
       z.object({
@@ -78,9 +86,23 @@ export const cardioRoutes = new Hono()
     return c.json(sessions);
   })
 
+  .get("/:id", async (c) => {
+    const userId = getUserId(c);
+    const { id } = c.req.param();
+    const db = getDb();
+
+    const session = await db.query.cardioSessions.findFirst({
+      where: and(eq(cardioSessions.id, id), eq(cardioSessions.userId, userId)),
+      with: { splits: { orderBy: (s, { asc }) => [asc(s.kilometer)] } },
+    });
+
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    return c.json(session);
+  })
+
   .post("/", zValidator("json", createCardioSchema), async (c) => {
     const userId = getUserId(c);
-    const { splits, ...data } = c.req.valid("json");
+    const { splits, planDayId, weekIndex, dayIndex, ...data } = c.req.valid("json");
     const db = getDb();
 
     const [session] = await db
@@ -99,6 +121,27 @@ export const cardioRoutes = new Hono()
         .values(splits.map((s) => ({ ...s, cardioSessionId: session.id })));
     }
 
+    // Write a plan day log if this session is linked to an active plan day
+    if (planDayId != null && weekIndex != null && dayIndex != null) {
+      const activePlan = await db.query.trainingPlans.findFirst({
+        where: and(eq(trainingPlans.userId, userId), eq(trainingPlans.status, "active")),
+      });
+
+      if (activePlan) {
+        await db
+          .insert(planDayLogs)
+          .values({
+            userId,
+            trainingPlanId: activePlan.id,
+            planDayId,
+            weekIndex,
+            dayIndex,
+            status: "cardio_completed",
+          })
+          .onConflictDoNothing();
+      }
+    }
+
     return c.json(session, 201);
   })
 
@@ -108,7 +151,7 @@ export const cardioRoutes = new Hono()
     async (c) => {
       const userId = getUserId(c);
       const { id } = c.req.param();
-      const { splits, ...data } = c.req.valid("json");
+      const { splits, planDayId: _pd, weekIndex: _wi, dayIndex: _di, ...data } = c.req.valid("json");
       const db = getDb();
 
       const [updated] = await db

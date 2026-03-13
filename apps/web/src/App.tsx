@@ -9,7 +9,9 @@ import { PlannerPage } from "@/pages/PlannerPage";
 import { PlanEditorPage } from "@/pages/PlanEditorPage";
 import { WorkoutPage } from "@/pages/WorkoutPage";
 import { ActiveSessionPage } from "@/pages/ActiveSessionPage";
+import { WorkoutDetailPage } from "@/pages/WorkoutDetailPage";
 import { CardioPage } from "@/pages/CardioPage";
+import { CardioDetailPage } from "@/pages/CardioDetailPage";
 import { CoachPage } from "@/pages/CoachPage";
 import { ProgressPage } from "@/pages/ProgressPage";
 import { ProfilePage } from "@/pages/ProfilePage";
@@ -40,8 +42,10 @@ export function App() {
               <Route path="/planner/plans/:id" element={<PlanEditorPage />} />
               <Route path="/workout" element={<WorkoutPage />} />
               <Route path="/workout/new" element={<WorkoutPage />} />
+              <Route path="/workout/history/:id" element={<WorkoutDetailPage />} />
               <Route path="/workout/:id" element={<ActiveSessionPage />} />
               <Route path="/cardio" element={<CardioPage />} />
+              <Route path="/cardio/:id" element={<CardioDetailPage />} />
               <Route path="/coach" element={<CoachPage />} />
               <Route path="/progress" element={<ProgressPage />} />
               <Route path="/profile" element={<ProfilePage />} />

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, ilike, ne, lt, sum } from "drizzle-orm";
 import {
   trainingPlans,
   planMicrocycles,
@@ -11,6 +11,10 @@ import {
   exercises,
   cardioTemplates,
   cardioTemplateExercises,
+  planDayLogs,
+  workoutSessions,
+  exerciseEntries,
+  exerciseSets,
 } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
 import { authMiddleware, getUserId } from "../middleware/auth.js";
@@ -49,11 +53,11 @@ const muscleSchema = z.enum(MUSCLES);
 
 const aiStrengthExerciseSchema = z.object({
   name: z.string(),
-  primaryMuscle: muscleSchema,
-  secondaryMuscles: z.array(muscleSchema).default([]),
+  primaryMuscle: muscleSchema.catch("other"),
+  secondaryMuscles: z.array(muscleSchema.catch("other")).default([]),
   sets: z.number().int(),
-  repMin: z.number().int(),
-  repMax: z.number().int(),
+  repMin: z.number().int().optional(),
+  repMax: z.number().int().optional(),
   restSeconds: z.number().int().optional(),
   rir: z.number().int().optional(),
 });
@@ -102,7 +106,12 @@ const createPlanSchema = z.object({
   mesocycleLength: z.number().int().min(1).max(52).default(4),
 });
 
-const updatePlanSchema = createPlanSchema.partial();
+const updatePlanSchema = createPlanSchema
+  .extend({
+    status: z.enum(["draft", "active", "completed"]).optional(),
+    startDate: z.string().date().optional(), // YYYY-MM-DD, only used when activating
+  })
+  .partial();
 
 const upsertDaySchema = z.object({
   type: z.enum(["training", "rest"]).default("training"),
@@ -122,8 +131,9 @@ async function createTemplateFromExercises(
     primaryMuscle?: string;
     secondaryMuscles?: string[];
     sets: number;
-    repMin: number;
-    repMax: number;
+    repMin?: number;
+    repMax?: number;
+    rir?: number;
     restSeconds?: number;
   }>
 ): Promise<string | null> {
@@ -157,8 +167,9 @@ async function createTemplateFromExercises(
       exerciseId: matched.id,
       order: order++,
       targetSets: ex.sets,
-      targetRepMin: ex.repMin,
-      targetRepMax: ex.repMax,
+      targetRepMin: ex.repMin ?? 0,
+      targetRepMax: ex.repMax ?? 0,
+      rir: ex.rir ?? null,
       restSeconds: ex.restSeconds ?? null,
     });
   }
@@ -198,14 +209,365 @@ export const planRoutes = new Hono()
   .use("*", authMiddleware)
 
   // List all plans for user
-  .get("/", async (c) => {
+   .get("/", async (c) => {
     const userId = getUserId(c);
     const db = getDb();
-    const plans = await db.query.trainingPlans.findMany({
+    const plan = await db.query.trainingPlans.findFirst({
       where: eq(trainingPlans.userId, userId),
-      orderBy: (tp, { desc }) => [desc(tp.updatedAt)],
     });
-    return c.json(plans);
+    return c.json(plan ?? null);
+  })
+
+  // Get active plan with suggested workout day
+  .get("/active", async (c) => {
+    const userId = getUserId(c);
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.userId, userId), eq(trainingPlans.status, "active")),
+      with: {
+        microcycles: {
+          orderBy: (pm, { asc }) => [asc(pm.position)],
+          with: {
+            days: {
+              orderBy: (pd, { asc }) => [asc(pd.dayNumber)],
+              with: {
+                workoutTemplate: { columns: { id: true, name: true } },
+                cardioTemplate: { columns: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!plan) return c.json(null);
+
+    // Compute suggested day based on calendar position since activation,
+    // advancing past any already-skipped days (up to one full cycle look-ahead)
+    let suggestedDay: {
+      planDayId: string;
+      weekIndex: number;
+      dayIndex: number;
+      scheduledDate: string; // YYYY-MM-DD — the fixed calendar date for this plan slot
+      type: string;
+      workoutTemplate: { id: string; name: string } | null;
+      cardioTemplate: { id: string; name: string } | null;
+    } | null = null;
+
+    if (plan.activatedAt) {
+      const msPerDay = 86_400_000;
+      // Use startDate (user-chosen Day 1) when available; fall back to activatedAt for legacy rows
+      const anchor = plan.startDate
+        ? new Date(plan.startDate + "T00:00:00Z")
+        : new Date(plan.activatedAt);
+      const daysSince = Math.floor((Date.now() - anchor.getTime()) / msPerDay);
+      const totalDays = plan.microcycleLength * plan.mesocycleLength;
+
+      // Fetch all resolved logs for this plan (skipped or completed, per-component or full)
+      const resolvedLogs = await db
+        .select({ weekIndex: planDayLogs.weekIndex, dayIndex: planDayLogs.dayIndex, status: planDayLogs.status })
+        .from(planDayLogs)
+        .where(eq(planDayLogs.trainingPlanId, plan.id));
+
+      // Group logs by day key so we can check per-component resolution
+      const logsByDay = new Map<string, string[]>();
+      for (const l of resolvedLogs) {
+        const key = `${l.weekIndex}:${l.dayIndex}`;
+        const arr = logsByDay.get(key) ?? [];
+        arr.push(l.status);
+        logsByDay.set(key, arr);
+      }
+
+      // A day slot is "fully done" (should be skipped in suggestion) when:
+      //   - it has a 'skipped' or 'completed' full-day log, OR
+      //   - both its workout and cardio components are resolved
+      function isDayFullyResolved(
+        key: string,
+        hasWorkout: boolean,
+        hasCardio: boolean
+      ): boolean {
+        const statuses = logsByDay.get(key) ?? [];
+        if (statuses.includes("skipped") || statuses.includes("completed")) return true;
+        const workoutDone = !hasWorkout || statuses.includes("workout_completed") || statuses.includes("workout_skipped");
+        const cardioDone = !hasCardio || statuses.includes("cardio_completed") || statuses.includes("cardio_skipped");
+        return workoutDone && cardioDone;
+      }
+
+      // Walk forward from today's calendar position until we find a non-resolved day
+      let offset = 0;
+      while (offset < totalDays) {
+        const pos = daysSince + offset;
+        const weekIndex = Math.floor(pos / plan.microcycleLength) % plan.mesocycleLength;
+        const dayIndex = pos % plan.microcycleLength;
+        const key = `${weekIndex}:${dayIndex}`;
+
+        const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
+        const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
+
+        if (!day) { offset++; continue; }
+
+        const hasWorkout = !!day.workoutTemplateId;
+        const hasCardio = !!day.cardioTemplateId;
+
+        if (!isDayFullyResolved(key, hasWorkout, hasCardio)) {
+          // Compute the fixed calendar date for this slot (anchor + pos days, UTC)
+          const slotDate = new Date(anchor.getTime() + pos * msPerDay);
+          const scheduledDate = slotDate.toISOString().slice(0, 10);
+
+          // For suggestion, only expose components not yet resolved
+          const statuses = logsByDay.get(key) ?? [];
+          const workoutResolved = statuses.includes("workout_completed") || statuses.includes("workout_skipped");
+          const cardioResolved = statuses.includes("cardio_completed") || statuses.includes("cardio_skipped");
+
+          suggestedDay = {
+            planDayId: day.id,
+            weekIndex,
+            dayIndex,
+            scheduledDate,
+            type: day.type,
+            workoutTemplate: (!hasWorkout || workoutResolved) ? null : day.workoutTemplate as { id: string; name: string } | null,
+            cardioTemplate: (!hasCardio || cardioResolved) ? null : day.cardioTemplate as { id: string; name: string } | null,
+          };
+          break;
+        }
+        offset++;
+      }
+    }
+
+    return c.json({ ...plan, suggestedDay });
+  })
+
+  // Skip today's suggested plan day (or a specific component of it)
+  .post("/active/skip-day", zValidator("json", z.object({
+    weekIndex: z.number().int().min(0),
+    dayIndex: z.number().int().min(0),
+    // 'workout' | 'cardio' | 'all' — defaults to 'all' for backward compat
+    component: z.enum(["workout", "cardio", "all"]).default("all"),
+    notes: z.string().optional().nullable(),
+  })), async (c) => {
+    const userId = getUserId(c);
+    const { weekIndex, dayIndex, component, notes } = c.req.valid("json");
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.userId, userId), eq(trainingPlans.status, "active")),
+      with: {
+        microcycles: {
+          orderBy: (pm, { asc }) => [asc(pm.position)],
+          with: {
+            days: {
+              orderBy: (pd, { asc }) => [asc(pd.dayNumber)],
+            },
+          },
+        },
+      },
+    });
+
+    if (!plan) return c.json({ error: "No active plan" }, 404);
+
+    const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
+    const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
+
+    if (!day) return c.json({ error: "Plan day not found" }, 404);
+
+    // Determine which status(es) to write
+    const statusToWrite =
+      component === "workout" ? "workout_skipped" :
+      component === "cardio"  ? "cardio_skipped" :
+      "skipped";
+
+    await db
+      .insert(planDayLogs)
+      .values({
+        userId,
+        trainingPlanId: plan.id,
+        planDayId: day.id,
+        weekIndex,
+        dayIndex,
+        status: statusToWrite,
+        notes: notes ?? null,
+      })
+      .onConflictDoNothing();
+
+    return c.json({ ok: true });
+  })
+
+  // Get adherence metrics for the active plan
+  .get("/active/adherence", async (c) => {
+    const userId = getUserId(c);
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.userId, userId), eq(trainingPlans.status, "active")),
+      with: {
+        microcycles: {
+          orderBy: (pm, { asc }) => [asc(pm.position)],
+          with: { days: { orderBy: (pd, { asc }) => [asc(pd.dayNumber)] } },
+        },
+      },
+    });
+
+    if (!plan || !plan.activatedAt) return c.json(null);
+
+    // Compute "today's" position in the plan
+    const msPerDay = 86_400_000;
+    const daysSince = Math.floor((Date.now() - new Date(plan.activatedAt).getTime()) / msPerDay);
+    const currentWeekIndex = Math.floor(daysSince / plan.microcycleLength) % plan.mesocycleLength;
+    const currentDayIndex = daysSince % plan.microcycleLength;
+
+    // Fetch all logs for this plan
+    const logs = await db.query.planDayLogs.findMany({
+      where: and(
+        eq(planDayLogs.trainingPlanId, plan.id),
+        eq(planDayLogs.userId, userId)
+      ),
+    });
+
+    const logMap = new Map<string, string[]>();
+    for (const l of logs) {
+      const key = `${l.weekIndex}:${l.dayIndex}`;
+      const arr = logMap.get(key) ?? [];
+      arr.push(l.status);
+      logMap.set(key, arr);
+    }
+
+    // Helper: is a day considered "completed" for adherence? Both components must be done.
+    function isDayCompleted(key: string, hasWorkout: boolean, hasCardio: boolean): boolean {
+      const statuses = logMap.get(key) ?? [];
+      if (statuses.includes("completed")) return true;
+      const workoutDone = !hasWorkout || statuses.includes("workout_completed");
+      const cardioDone = !hasCardio || statuses.includes("cardio_completed");
+      return workoutDone && cardioDone;
+    }
+
+    function isDaySkipped(key: string): boolean {
+      const statuses = logMap.get(key) ?? [];
+      return statuses.includes("skipped") || statuses.includes("workout_skipped") || statuses.includes("cardio_skipped");
+    }
+
+    // Training days only (carry workoutTemplateId + cardioTemplateId for component awareness)
+    const trainingDaysByWeek = plan.microcycles.map((mc) => ({
+      weekIndex: mc.position - 1,
+      days: mc.days
+        .filter((d) => d.type === "training")
+        .map((d) => ({
+          dayIndex: d.dayNumber - 1,
+          hasWorkout: !!d.workoutTemplateId,
+          hasCardio: !!d.cardioTemplateId,
+        })),
+    }));
+
+    // Build per-week stats; only count days that are in the past (before today)
+    let totalPlanned = 0;
+    let totalCompleted = 0;
+    let totalSkipped = 0;
+    let totalMissed = 0;
+
+    const weeks = trainingDaysByWeek.map(({ weekIndex, days }) => {
+      let planned = 0;
+      let completed = 0;
+      let skipped = 0;
+      let missed = 0;
+
+      for (const { dayIndex: di, hasWorkout, hasCardio } of days) {
+        // Only count days that are strictly in the past
+        const isPast =
+          weekIndex < currentWeekIndex ||
+          (weekIndex === currentWeekIndex && di < currentDayIndex);
+
+        if (!isPast) continue;
+
+        planned++;
+        const key = `${weekIndex}:${di}`;
+        if (isDayCompleted(key, hasWorkout, hasCardio)) completed++;
+        else if (isDaySkipped(key)) skipped++;
+        else missed++;
+      }
+
+      return { weekIndex, planned, completed, skipped, missed };
+    });
+
+    for (const w of weeks) {
+      totalPlanned += w.planned;
+      totalCompleted += w.completed;
+      totalSkipped += w.skipped;
+      totalMissed += w.missed;
+    }
+
+    const completionRate = totalPlanned > 0 ? totalCompleted / totalPlanned : 0;
+
+    // Streak: consecutive completed training days going backwards from yesterday
+    // Build a flat ordered list of all past training day occurrences
+    type DayOccurrence = { weekIndex: number; dayIndex: number; hasWorkout: boolean; hasCardio: boolean };
+    const pastTrainingDays: DayOccurrence[] = [];
+
+    for (const { weekIndex, days } of trainingDaysByWeek) {
+      for (const { dayIndex: di, hasWorkout, hasCardio } of days) {
+        const isPast =
+          weekIndex < currentWeekIndex ||
+          (weekIndex === currentWeekIndex && di < currentDayIndex);
+        if (isPast) pastTrainingDays.push({ weekIndex, dayIndex: di, hasWorkout, hasCardio });
+      }
+    }
+
+    // Sort by (weekIndex, dayIndex) ascending
+    pastTrainingDays.sort((a, b) =>
+      a.weekIndex !== b.weekIndex ? a.weekIndex - b.weekIndex : a.dayIndex - b.dayIndex
+    );
+
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let runningStreak = 0;
+
+    for (const { weekIndex, dayIndex, hasWorkout, hasCardio } of pastTrainingDays) {
+      const key = `${weekIndex}:${dayIndex}`;
+      if (isDayCompleted(key, hasWorkout, hasCardio)) {
+        runningStreak++;
+        if (runningStreak > longestStreak) longestStreak = runningStreak;
+      } else {
+        runningStreak = 0;
+      }
+    }
+    currentStreak = runningStreak;
+
+    // Total volume: sum sets/reps/weight from completed sessions linked to this plan
+    const completedSessionIds = logs
+      .filter((l) => (l.status === "completed" || l.status === "workout_completed") && l.workoutSessionId)
+      .map((l) => l.workoutSessionId as string);
+
+    let totalSets = 0;
+    let totalReps = 0;
+    let totalWeightKg = 0;
+
+    if (completedSessionIds.length > 0) {
+      for (const sessionId of completedSessionIds) {
+        const entries = await db.query.exerciseEntries.findMany({
+          where: eq(exerciseEntries.workoutSessionId, sessionId),
+          with: { sets: true },
+        });
+        for (const entry of entries) {
+          for (const s of entry.sets) {
+            if (!s.completed) continue;
+            totalSets++;
+            totalReps += s.reps ?? 0;
+            totalWeightKg += (s.reps ?? 0) * Number(s.weightKg ?? 0);
+          }
+        }
+      }
+    }
+
+    return c.json({
+      completionRate: Math.round(completionRate * 100) / 100,
+      currentStreak,
+      longestStreak,
+      totalVolume: {
+        sets: totalSets,
+        reps: totalReps,
+        weightKg: Math.round(totalWeightKg),
+      },
+      weeks,
+    });
   })
 
   // Get single plan with full structure
@@ -240,6 +602,13 @@ export const planRoutes = new Hono()
     const data = c.req.valid("json");
     const db = getDb();
 
+    const existingPlan = await db.query.trainingPlans.findFirst({
+      where: eq(trainingPlans.userId, userId),
+    });
+    if (existingPlan) {
+      return c.json({ error: "You already have a training plan." }, 409);
+    }
+
     const [plan] = await db
       .insert(trainingPlans)
       .values({ ...data, userId })
@@ -269,9 +638,44 @@ export const planRoutes = new Hono()
     const data = c.req.valid("json");
     const db = getDb();
 
+    // Enforce single active plan
+    if (data.status === "active") {
+      const existing = await db.query.trainingPlans.findFirst({
+        where: and(
+          eq(trainingPlans.userId, userId),
+          eq(trainingPlans.status, "active"),
+          ne(trainingPlans.id, id)
+        ),
+      });
+      if (existing) {
+        return c.json(
+          { error: `Plan "${existing.name}" is already active. Complete or deactivate it before activating another.` },
+          409
+        );
+      }
+
+      // Validate startDate is not in the past
+      const today = new Date().toISOString().slice(0, 10);
+      const startDate = data.startDate ?? today;
+      if (startDate < today) {
+        return c.json({ error: "Start date cannot be in the past." }, 400);
+      }
+
+      const { startDate: _sd, ...rest } = data;
+      const [updated] = await db
+        .update(trainingPlans)
+        .set({ ...rest, activatedAt: new Date(), startDate, updatedAt: new Date() })
+        .where(and(eq(trainingPlans.id, id), eq(trainingPlans.userId, userId)))
+        .returning();
+
+      if (!updated) return c.json({ error: "Plan not found" }, 404);
+      return c.json(updated);
+    }
+
+    const { startDate: _sd, ...rest } = data;
     const [updated] = await db
       .update(trainingPlans)
-      .set({ ...data, updatedAt: new Date() })
+      .set({ ...rest, updatedAt: new Date() })
       .where(and(eq(trainingPlans.id, id), eq(trainingPlans.userId, userId)))
       .returning();
 
@@ -524,6 +928,13 @@ export const planRoutes = new Hono()
     const userId = getUserId(c);
     const data = c.req.valid("json");
     const db = getDb();
+
+    const existingPlan = await db.query.trainingPlans.findFirst({
+      where: eq(trainingPlans.userId, userId),
+    });
+    if (existingPlan) {
+      return c.json({ error: "You already have a training plan." }, 409);
+    }
 
     const microcycleLength = Math.max(
       ...data.weeks.flatMap((w) => w.days.map((d) => d.day)),

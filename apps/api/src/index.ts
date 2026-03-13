@@ -21,7 +21,15 @@ app.use("*", logger());
 app.use(
   "*",
   cors({
-    origin: process.env.WEB_URL ?? "http://localhost:5173",
+    origin: (origin) => {
+      if (process.env.NODE_ENV !== "production" && origin?.startsWith("http://localhost:")) {
+        return origin;
+      }
+      const allowed = (process.env.WEB_URL ?? "http://localhost:5173")
+        .split(",")
+        .map((s) => s.trim());
+      return allowed.includes(origin) ? origin : allowed[0];
+    },
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,

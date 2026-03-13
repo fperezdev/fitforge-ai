@@ -167,9 +167,11 @@ function PlanDisplay({ plan }: { plan: WorkoutPlan }) {
 function MessageBubble({
   message,
   onSavePlan,
+  canImportPlan,
 }: {
   message: Message;
   onSavePlan?: (plan: object) => void;
+  canImportPlan?: boolean;
 }) {
   const isUser = message.role === "user";
   const plan = !isUser ? extractPlan(message.content) : null;
@@ -196,7 +198,7 @@ function MessageBubble({
       >
         <p className="whitespace-pre-wrap">{displayContent}</p>
         {plan && <PlanDisplay plan={plan as WorkoutPlan} />}
-        {plan && (
+        {plan && canImportPlan && (
           <button
             onClick={() => onSavePlan?.(plan)}
             className="mt-3 flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
@@ -204,6 +206,11 @@ function MessageBubble({
             <Plus className="h-3 w-3" />
             Import as Training Plan
           </button>
+        )}
+        {plan && !canImportPlan && (
+          <p className="mt-3 text-xs text-muted-foreground">
+            You already have a training plan.
+          </p>
         )}
       </div>
     </div>
@@ -262,6 +269,12 @@ export function CoachPage() {
     queryFn: () => api.get(`/coach/conversations/${activeConv}/messages`),
     enabled: !!activeConv,
   });
+
+  const { data: plan = null } = useQuery<{ id: string } | null>({
+    queryKey: ["plans"],
+    queryFn: () => api.get("/plans"),
+  });
+  const canImportPlan = plan === null;
 
   // Keep a ref to the last data that came from the server (not optimistic)
   useEffect(() => {
@@ -429,6 +442,7 @@ export function CoachPage() {
                   key={msg.id}
                   message={msg}
                   onSavePlan={(plan) => setPlanToSave(plan)}
+                  canImportPlan={canImportPlan}
                 />
               ))}
 
@@ -520,6 +534,11 @@ export function CoachPage() {
           <div className="bg-muted rounded-lg p-3 overflow-auto max-h-48 mb-4">
             <PlanDisplay plan={planToSave as WorkoutPlan} />
           </div>
+        )}
+        {importPlanMutation.error && (
+          <p className="text-sm text-destructive mb-4">
+            {(importPlanMutation.error as Error).message}
+          </p>
         )}
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setPlanToSave(null)}>

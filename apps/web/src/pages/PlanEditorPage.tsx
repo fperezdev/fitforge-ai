@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   Layers,
   LayoutGrid,
   Check,
@@ -14,10 +13,15 @@ import {
   X,
   Search,
   Pencil,
+  TrendingUp,
+  Flame,
+  Weight,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -85,6 +89,8 @@ interface TrainingPlan {
   status: "draft" | "active" | "completed";
   microcycleLength: number;
   mesocycleLength: number;
+  startDate: string | null; // YYYY-MM-DD, set when plan was activated
+  activatedAt: string | null; // ISO timestamp, fallback anchor for legacy rows
   microcycles: PlanMicrocycle[];
 }
 
@@ -264,13 +270,13 @@ function StrengthEditor({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {rows.length > 0 && (
-        <div className="grid grid-cols-[1fr_44px_44px_44px_44px_36px] gap-x-1 px-1 pb-0.5">
+        <div className="grid grid-cols-[1fr_56px_96px_56px_68px_36px] gap-x-2 px-2 pb-1 bg-muted/30 rounded-t-md pt-2 border-b border-border">
           {["Exercise", "Sets", "Reps", "RIR", "Rest", ""].map((h) => (
             <span
               key={h}
-              className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-center first:text-left"
+              className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center first:text-left"
             >
               {h}
             </span>
@@ -278,16 +284,16 @@ function StrengthEditor({
         </div>
       )}
 
-      <div className="space-y-1">
+      <div className="space-y-2">
         {rows.map((row) => (
           <div
             key={row._key}
-            className="grid grid-cols-[1fr_44px_44px_44px_44px_36px] gap-x-1 items-center rounded-lg border border-border bg-background px-2 py-1.5"
+            className="grid grid-cols-[1fr_56px_96px_56px_68px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 pl-3 py-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20"
           >
             {/* Exercise name */}
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{row.exerciseName}</p>
-              <p className="text-[11px] text-muted-foreground truncate">{row.exerciseMuscle}</p>
+            <div className="min-w-0 pr-2">
+              <p className="text-sm font-semibold truncate leading-tight mb-0.5">{row.exerciseName}</p>
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{row.exerciseMuscle}</p>
             </div>
 
             {/* Sets */}
@@ -298,11 +304,11 @@ function StrengthEditor({
               onChange={(e) =>
                 update(row._key, { sets: Math.max(1, parseInt(e.target.value) || 1) })
               }
-              className="w-full h-7 rounded border border-border bg-background text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
 
-            {/* Reps (min–max shown as two tiny inputs) */}
-            <div className="flex items-center gap-0.5">
+            {/* Reps (min–max shown as two inputs) */}
+            <div className="flex items-center gap-1">
               <input
                 type="number"
                 min={1}
@@ -310,9 +316,9 @@ function StrengthEditor({
                 onChange={(e) =>
                   update(row._key, { repMin: Math.max(1, parseInt(e.target.value) || 1) })
                 }
-                className="w-full h-7 rounded border border-border bg-background text-center text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full h-8 rounded-md border border-input bg-background p-0 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
-              <span className="text-muted-foreground text-xs shrink-0">–</span>
+              <span className="text-muted-foreground/60 text-xs font-medium shrink-0">–</span>
               <input
                 type="number"
                 min={1}
@@ -320,7 +326,7 @@ function StrengthEditor({
                 onChange={(e) =>
                   update(row._key, { repMax: Math.max(1, parseInt(e.target.value) || 1) })
                 }
-                className="w-full h-7 rounded border border-border bg-background text-center text-xs tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full h-8 rounded-md border border-input bg-background p-0 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
 
@@ -335,50 +341,57 @@ function StrengthEditor({
                   rir: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
                 })
               }
-              className="w-full h-7 rounded border border-border bg-background text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
 
             {/* Rest (seconds) */}
-            <input
-              type="number"
-              min={0}
-              step={15}
-              placeholder="—"
-              value={row.restSeconds ?? ""}
-              onChange={(e) =>
-                update(row._key, {
-                  restSeconds:
-                    e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
-                })
-              }
-              className="w-full h-7 rounded border border-border bg-background text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-            />
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                step={15}
+                placeholder="—"
+                value={row.restSeconds ?? ""}
+                onChange={(e) =>
+                  update(row._key, {
+                    restSeconds:
+                      e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
+                  })
+                }
+                className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {row.restSeconds && <span className="absolute right-1.5 bottom-1 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">s</span>}
+            </div>
 
             {/* Delete */}
             <button
               onClick={() => remove(row._key)}
-              className="flex items-center justify-center h-7 w-7 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+              className="group flex items-center justify-center h-8 w-8 ml-auto rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40"
               aria-label="Remove exercise"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-[14px] w-[14px] opacity-70 group-hover:opacity-100 transition-opacity" />
             </button>
           </div>
         ))}
       </div>
 
       {showPicker ? (
-        <ExercisePicker
-          onSelect={addExercise}
-          onCancel={() => setShowPicker(false)}
-        />
+        <div className="pt-2 animate-in slide-in-from-top-2 fade-in duration-200">
+          <ExercisePicker
+            onSelect={addExercise}
+            onCancel={() => setShowPicker(false)}
+          />
+        </div>
       ) : (
-        <button
+        <Button
+          variant="dashed"
+          size="sm"
           onClick={() => setShowPicker(true)}
-          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          className="w-full mt-2"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-3.5 w-3.5 mr-1.5" />
           Add exercise
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -406,13 +419,13 @@ function CardioEditor({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {rows.length > 0 && (
-        <div className="grid grid-cols-[1fr_44px_64px_36px] gap-x-1 px-1 pb-0.5">
+        <div className="grid grid-cols-[1fr_56px_72px_36px] gap-x-2 px-2 pb-1 bg-muted/30 rounded-t-md pt-2 border-b border-border">
           {["Activity", "Zone", "km", ""].map((h) => (
             <span
               key={h}
-              className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-center first:text-left"
+              className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center first:text-left"
             >
               {h}
             </span>
@@ -420,69 +433,113 @@ function CardioEditor({
         </div>
       )}
 
-      <div className="space-y-1">
+      <div className="space-y-2">
         {rows.map((row) => (
           <div
             key={row._key}
-            className="grid grid-cols-[1fr_44px_64px_36px] gap-x-1 items-center rounded-lg border border-border bg-background px-2 py-1.5"
+            className="grid grid-cols-[1fr_56px_72px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 py-2 shadow-sm transition-all focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20"
           >
             <input
               type="text"
               value={row.name}
               onChange={(e) => update(row._key, { name: e.target.value })}
               placeholder="e.g. Easy run"
-              className="w-full h-7 rounded border border-border bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
             />
-            <input
-              type="number"
-              min={1}
-              max={5}
-              placeholder="—"
-              value={row.zone ?? ""}
-              onChange={(e) =>
-                update(row._key, {
-                  zone:
-                    e.target.value === ""
-                      ? null
-                      : Math.min(5, Math.max(1, parseInt(e.target.value) || 1)),
-                })
-              }
-              className="w-full h-7 rounded border border-border bg-background text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              placeholder="—"
-              value={row.kilometers ?? ""}
-              onChange={(e) =>
-                update(row._key, {
-                  kilometers:
-                    e.target.value === "" ? null : Math.max(0, parseFloat(e.target.value) || 0),
-                })
-              }
-              className="w-full h-7 rounded border border-border bg-background text-center text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-ring"
-            />
+            <div className="relative">
+              {row.zone != null && <span className="absolute left-2 top-1.5 text-[10px] font-semibold text-amber-600/50 pointer-events-none">Z</span>}
+              <input
+                type="number"
+                min={1}
+                max={5}
+                placeholder="—"
+                value={row.zone ?? ""}
+                onChange={(e) =>
+                  update(row._key, {
+                    zone:
+                      e.target.value === ""
+                        ? null
+                        : Math.min(5, Math.max(1, parseInt(e.target.value) || 1)),
+                  })
+                }
+                className={cn(
+                  "w-full h-8 rounded-md border border-input bg-background text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500",
+                  row.zone != null ? "pl-4" : ""
+                )}
+              />
+            </div>
+            <div className="relative">
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                placeholder="—"
+                value={row.kilometers ?? ""}
+                onChange={(e) =>
+                  update(row._key, {
+                    kilometers:
+                      e.target.value === "" ? null : Math.max(0, parseFloat(e.target.value) || 0),
+                  })
+                }
+                className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 pr-5 text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+              {row.kilometers != null && <span className="absolute right-1.5 bottom-1.5 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">km</span>}
+            </div>
             <button
               onClick={() => remove(row._key)}
-              className="flex items-center justify-center h-7 w-7 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+              className="group flex items-center justify-center h-8 w-8 ml-auto rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40"
               aria-label="Remove activity"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-[14px] w-[14px] opacity-70 group-hover:opacity-100 transition-opacity" />
             </button>
           </div>
         ))}
       </div>
 
-      <button
+      <Button
+        variant="dashed"
+        size="sm"
         onClick={addRow}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="w-full mt-2"
       >
-        <Plus className="h-3.5 w-3.5" />
+        <Plus className="h-3.5 w-3.5 mr-1.5" />
         Add activity
-      </button>
+      </Button>
     </div>
   );
+}
+
+// ─── Schedule date helper ─────────────────────────────────────────────────────
+
+/**
+ * Returns the YYYY-MM-DD date for a given plan slot (0-based weekIndex, dayIndex)
+ * anchored to plan.startDate (or plan.activatedAt for legacy rows).
+ * Returns null if the plan has no anchor yet (draft).
+ */
+function getPlanSlotDate(
+  plan: Pick<TrainingPlan, "startDate" | "activatedAt" | "microcycleLength">,
+  weekIndex0: number,
+  dayIndex0: number
+): string | null {
+  const anchorStr = plan.startDate ?? plan.activatedAt;
+  if (!anchorStr) return null;
+  const anchor = plan.startDate
+    ? new Date(plan.startDate + "T00:00:00")
+    : new Date(anchorStr);
+  const offset = weekIndex0 * plan.microcycleLength + dayIndex0;
+  const slotDate = new Date(anchor.getTime() + offset * 86_400_000);
+  return slotDate.toISOString().slice(0, 10);
+}
+
+/**
+ * Formats a YYYY-MM-DD string as a short human label, e.g. "Fri Mar 13".
+ */
+function formatSlotDate(iso: string): string {
+  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 // ─── Day Cell ─────────────────────────────────────────────────────────────────
@@ -495,6 +552,7 @@ function DayCell({
   micId,
   isLocked,
   compact = false,
+  scheduledDate,
   onNavigateToDay,
 }: {
   day: PlanDay;
@@ -504,6 +562,7 @@ function DayCell({
   micId: string;
   isLocked: boolean;
   compact?: boolean;
+  scheduledDate?: string | null;
   onNavigateToDay?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -560,6 +619,11 @@ function DayCell({
       >
         <span className="block text-[10px] text-muted-foreground mb-0.5">
           D{day.dayNumber}
+          {scheduledDate && (
+            <span className="block text-[9px] leading-tight opacity-70">
+              {formatSlotDate(scheduledDate)}
+            </span>
+          )}
         </span>
 
         {day.type !== "training" ? (
@@ -777,6 +841,11 @@ function PlanView({
                     micId={mc.id}
                     isLocked={isLocked}
                     compact
+                    scheduledDate={
+                      plan.status === "active"
+                        ? getPlanSlotDate(plan, mc.position - 1, d - 1)
+                        : null
+                    }
                     onNavigateToDay={() => onNavigateToDay(mc.position, d)}
                   />
                 );
@@ -810,6 +879,110 @@ function PlanView({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Read-Only Day Views ──────────────────────────────────────────────────────
+
+function StrengthReadView({ rows }: { rows: StrengthRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic bg-muted/30 p-4 rounded-lg border border-dashed border-border text-center">
+        No strength exercises assigned.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map((r, i) => (
+        <div
+          key={r._key}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 shadow-sm transition-all hover:border-primary/20"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+              {i + 1}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-medium truncate">{r.exerciseName}</p>
+              <p className="text-[11px] text-muted-foreground uppercase tracking-wider truncate">
+                {r.exerciseMuscle}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-y-1 gap-x-2 text-sm sm:justify-end">
+            <div className="flex items-baseline gap-1 bg-muted/50 px-2 py-1 rounded-sm">
+              <span className="font-semibold tabular-nums text-foreground">{r.sets}</span>
+              <span className="text-xs text-muted-foreground">sets</span>
+            </div>
+            <span className="text-muted-foreground/30 px-1">×</span>
+            <div className="flex items-baseline gap-1 bg-muted/50 px-2 py-1 rounded-sm">
+              <span className="font-semibold tabular-nums text-foreground">
+                {r.repMin === r.repMax ? r.repMin : `${r.repMin}–${r.repMax}`}
+              </span>
+              <span className="text-xs text-muted-foreground">reps</span>
+            </div>
+            {r.rir != null && (
+              <div className="flex items-baseline gap-1 bg-primary/5 border border-primary/10 px-2 py-1 rounded-sm">
+                <span className="text-[10px] font-bold text-primary/70 uppercase">RIR</span>
+                <span className="font-semibold tabular-nums text-primary">{r.rir}</span>
+              </div>
+            )}
+            {r.restSeconds != null && (
+              <>
+                <div className="h-3 w-[1px] bg-border mx-1 hidden sm:block"></div>
+                <div className="flex items-center gap-1 text-muted-foreground bg-muted/30 px-2 py-1 rounded-sm">
+                  <span className="font-medium tabular-nums text-foreground">{r.restSeconds}s</span>
+                  <span className="text-[10px] uppercase">rest</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CardioReadView({ rows }: { rows: CardioRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic bg-muted/30 p-4 rounded-lg border border-dashed border-border text-center">
+        No cardio activities assigned.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map((r, i) => (
+        <div
+          key={r._key}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 shadow-sm transition-all hover:border-amber-500/20"
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-xs font-semibold text-amber-600 dark:text-amber-400">
+              {i + 1}
+            </div>
+            <p className="text-sm font-medium truncate">{r.name}</p>
+          </div>
+          <div className="flex items-center gap-3 text-sm sm:justify-end">
+            {r.kilometers != null && (
+              <div className="flex items-baseline gap-1 bg-amber-500/5 px-2 py-1 rounded-sm text-amber-900 dark:text-amber-300 border border-amber-500/10">
+                <span className="font-semibold tabular-nums">{r.kilometers}</span>
+                <span className="text-xs opacity-70">km</span>
+              </div>
+            )}
+            {r.zone != null && (
+              <div className="flex h-6 items-center rounded-md bg-amber-500/10 px-2 text-xs font-medium text-amber-700 dark:text-amber-500 border border-amber-500/20">
+                Zone {r.zone}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1033,6 +1206,12 @@ function DayView({
             <span className="text-sm font-semibold">
               Week {selectedWeek} · Day {selectedDay}
             </span>
+            {plan.status === "active" && (() => {
+              const d = getPlanSlotDate(plan, selectedWeek - 1, selectedDay - 1);
+              return d ? (
+                <span className="text-xs text-muted-foreground">{formatSlotDate(d)}</span>
+              ) : null;
+            })()}
             <span
               className={cn(
                 "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border",
@@ -1094,35 +1273,7 @@ function DayView({
                 </span>
               </div>
               {!isEditing ? (
-                strengthRows.length > 0 ? (
-                  <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
-                    {strengthRows.map((r) => (
-                      <div
-                        key={r._key}
-                        className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-x-3 items-center px-3 py-2.5 bg-background"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{r.exerciseName}</p>
-                          <p className="text-[11px] text-muted-foreground">{r.exerciseMuscle}</p>
-                        </div>
-                        <span className="text-sm tabular-nums text-center w-8">{r.sets}</span>
-                        <span className="text-sm tabular-nums text-center w-14">
-                          {r.repMin === r.repMax ? r.repMin : `${r.repMin}–${r.repMax}`}
-                        </span>
-                        {r.rir != null && (
-                          <span className="text-sm tabular-nums text-center w-10 text-muted-foreground">
-                            RIR {r.rir}
-                          </span>
-                        )}
-                        <span className="text-sm tabular-nums text-center w-12 text-muted-foreground">
-                          {r.restSeconds ? `${r.restSeconds}s` : "—"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground italic">No strength exercises assigned.</p>
-                )
+                <StrengthReadView rows={strengthRows} />
               ) : (
                 <StrengthEditor
                   rows={strengthRows}
@@ -1140,26 +1291,7 @@ function DayView({
                 </span>
               </div>
               {!isEditing ? (
-                cardioRows.length > 0 ? (
-                  <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
-                    {cardioRows.map((r) => (
-                      <div
-                        key={r._key}
-                        className="grid grid-cols-[1fr_auto_auto] gap-x-3 items-center px-3 py-2.5 bg-background"
-                      >
-                        <p className="text-sm font-medium truncate">{r.name}</p>
-                        <span className="text-sm tabular-nums text-center w-16 text-muted-foreground">
-                          {r.kilometers != null ? `${r.kilometers} km` : "—"}
-                        </span>
-                        <span className="text-sm tabular-nums text-center w-14 text-muted-foreground">
-                          {r.zone != null ? `Z${r.zone}` : "—"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground italic">No cardio activities assigned.</p>
-                )
+                <CardioReadView rows={cardioRows} />
               ) : (
                 <CardioEditor
                   rows={cardioRows}
@@ -1197,10 +1329,138 @@ function DayView({
   );
 }
 
+// ─── Plan Adherence Card ─────────────────────────────────────────────────────
+
+interface AdherenceWeek {
+  weekIndex: number;
+  planned: number;
+  completed: number;
+  skipped: number;
+  missed: number;
+}
+
+interface Adherence {
+  completionRate: number;
+  currentStreak: number;
+  longestStreak: number;
+  totalVolume: { sets: number; reps: number; weightKg: number };
+  weeks: AdherenceWeek[];
+}
+
+function PlanAdherenceCard() {
+  const { data: adherence, isLoading } = useQuery<Adherence | null>({
+    queryKey: ["planAdherence"],
+    queryFn: () => api.get("/plans/active/adherence"),
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground animate-pulse">
+        Loading adherence…
+      </div>
+    );
+  }
+
+  if (!adherence) return null;
+
+  const pct = Math.round(adherence.completionRate * 100);
+  const hasData = adherence.weeks.some((w) => w.planned > 0);
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-4">
+      <div className="flex items-center gap-2">
+        <TrendingUp className="h-4 w-4 text-primary" />
+        <h3 className="font-semibold text-sm">Plan Adherence</h3>
+      </div>
+
+      {/* Key stats row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-lg bg-muted/50 p-3 text-center">
+          <p className="text-2xl font-bold tabular-nums">{pct}%</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Completion</p>
+        </div>
+        <div className="rounded-lg bg-muted/50 p-3 text-center">
+          <div className="flex items-center justify-center gap-1">
+            <Flame className="h-4 w-4 text-orange-500" />
+            <p className="text-2xl font-bold tabular-nums">{adherence.currentStreak}</p>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">Current streak</p>
+        </div>
+        <div className="rounded-lg bg-muted/50 p-3 text-center">
+          <p className="text-2xl font-bold tabular-nums">{adherence.longestStreak}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Longest streak</p>
+        </div>
+        <div className="rounded-lg bg-muted/50 p-3 text-center">
+          <p className="text-2xl font-bold tabular-nums">{adherence.totalVolume.sets}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Total sets</p>
+        </div>
+      </div>
+
+      {/* Volume detail */}
+      {adherence.totalVolume.sets > 0 && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Weight className="h-3.5 w-3.5" />
+          <span>
+            {adherence.totalVolume.reps.toLocaleString()} reps ·{" "}
+            {adherence.totalVolume.weightKg.toLocaleString()} kg total volume
+          </span>
+        </div>
+      )}
+
+      {/* Per-week breakdown */}
+      {hasData && (
+        <div className="space-y-1.5">
+          <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+            <span>Wk</span>
+            <span className="text-center">Planned</span>
+            <span className="text-center text-emerald-600 dark:text-emerald-400">Done</span>
+            <span className="text-center text-amber-600 dark:text-amber-400">Skip</span>
+            <span className="text-center text-destructive/70">Miss</span>
+          </div>
+          {adherence.weeks
+            .filter((w) => w.planned > 0)
+            .map((w) => (
+              <div
+                key={w.weekIndex}
+                className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 items-center rounded-md bg-muted/30 px-2 py-1.5 text-sm"
+              >
+                <span className="text-xs font-semibold text-muted-foreground w-6">
+                  W{w.weekIndex + 1}
+                </span>
+                <span className="text-center tabular-nums">{w.planned}</span>
+                <span className="text-center tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">
+                  {w.completed}
+                </span>
+                <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
+                  {w.skipped}
+                </span>
+                <span className="text-center tabular-nums text-destructive/70">
+                  {w.missed}
+                </span>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {!hasData && (
+        <p className="text-xs text-muted-foreground text-center py-2">
+          No data yet — complete your first planned workout to see stats.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Plan Status Banner ───────────────────────────────────────────────────────
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
   const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [startDate, setStartDate] = useState(todayISO);
 
   const totalDays = plan.microcycles.length * plan.microcycleLength;
   const assignedDays = plan.microcycles
@@ -1211,8 +1471,13 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
   const allAssigned = assignedDays === totalDays;
 
   const finalizeMutation = useMutation({
-    mutationFn: () => api.put(`/plans/${plan.id}`, { status: "active" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
+    mutationFn: () => api.put(`/plans/${plan.id}`, { status: "active", startDate }),
+    onSuccess: () => {
+      setModalOpen(false);
+      setStartDate(todayISO());
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+    },
   });
 
   if (plan.status === "active") {
@@ -1236,30 +1501,72 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
   }
 
   return (
-    <div className="rounded-lg bg-card border border-border px-4 py-3 space-y-2">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-medium tabular-nums">{assignedDays}/{totalDays}</span>
-          <span className="text-sm text-muted-foreground">
-            days configured{allAssigned ? " — ready to activate" : ""}
-          </span>
-        </div>
-        {allAssigned && (
-          <Button size="sm" loading={finalizeMutation.isPending} onClick={() => finalizeMutation.mutate()}>
-            Activate Plan
-          </Button>
-        )}
-      </div>
-      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-        <div
-          className={cn(
-            "h-full rounded-full transition-all duration-500",
-            allAssigned ? "bg-emerald-500" : "bg-primary"
+    <>
+      <div className="rounded-lg bg-card border border-border px-4 py-3 space-y-2">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-medium tabular-nums">{assignedDays}/{totalDays}</span>
+            <span className="text-sm text-muted-foreground">
+              days configured{allAssigned ? " — ready to activate" : ""}
+            </span>
+          </div>
+          {allAssigned && (
+            <Button size="sm" onClick={() => setModalOpen(true)}>
+              Activate Plan
+            </Button>
           )}
-          style={{ width: `${pct}%` }}
-        />
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+          <div
+            className={cn(
+              "h-full rounded-full transition-all duration-500",
+              allAssigned ? "bg-emerald-500" : "bg-primary"
+            )}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
-    </div>
+
+      <Modal
+        open={modalOpen}
+        onClose={() => { setModalOpen(false); setStartDate(todayISO()); }}
+        title="Set plan start date"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Day 1 of your plan will be scheduled on this date. Each training day
+            gets a fixed calendar slot — skipping a day doesn't shift the schedule.
+          </p>
+          <DatePicker
+            label="Start date"
+            value={startDate}
+            onChange={setStartDate}
+            fromDate={new Date()}
+          />
+          {finalizeMutation.isError && (
+            <p className="text-sm text-destructive">
+              {finalizeMutation.error instanceof Error
+                ? finalizeMutation.error.message
+                : "Failed to activate plan. Please try again."}
+            </p>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => { setModalOpen(false); setStartDate(todayISO()); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              loading={finalizeMutation.isPending}
+              onClick={() => finalizeMutation.mutate()}
+            >
+              Activate
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 
@@ -1268,14 +1575,24 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
 export function PlanEditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [view, setView] = useState<ViewMode>("mesocycle");
   const [dayViewWeek, setDayViewWeek] = useState<number | undefined>();
   const [dayViewDay, setDayViewDay] = useState<number | undefined>();
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const { data: plan, isLoading } = useQuery<TrainingPlan>({
     queryKey: ["plan", id],
     queryFn: () => api.get(`/plans/${id}`),
     enabled: !!id,
+  });
+
+  const deletePlanMutation = useMutation({
+    mutationFn: () => api.delete(`/plans/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
+      navigate("/planner", { replace: true });
+    },
   });
 
   const { data: templates = [] } = useQuery<Template[]>({
@@ -1308,12 +1625,10 @@ export function PlanEditorPage() {
   ];
 
   return (
-    <div className="space-y-5">
+    <>
+      <div className="space-y-5">
       {/* Header */}
       <div className="flex items-start gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/planner")} aria-label="Back to planner">
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold truncate">{plan.name}</h1>
           {plan.description && (
@@ -1324,10 +1639,22 @@ export function PlanEditorPage() {
             {plan.microcycleLength} days/week
           </p>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setDeleteModalOpen(true)}
+          aria-label="Delete plan"
+          className="text-muted-foreground hover:text-destructive shrink-0"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Status banner */}
       <PlanStatusBanner plan={plan} />
+
+      {/* Adherence metrics — active plans only */}
+      {plan.status === "active" && <PlanAdherenceCard />}
 
       {/* View switcher */}
       <div
@@ -1374,5 +1701,28 @@ export function PlanEditorPage() {
         />
       )}
     </div>
+
+    <Modal
+      open={deleteModalOpen}
+      onClose={() => setDeleteModalOpen(false)}
+      title="Delete training plan"
+    >
+      <p className="text-sm text-muted-foreground mb-6">
+        This will permanently delete your training plan and all its data. This action cannot be undone.
+      </p>
+      <div className="flex justify-end gap-3">
+        <Button variant="outline" onClick={() => setDeleteModalOpen(false)}>
+          Cancel
+        </Button>
+        <Button
+          variant="destructive"
+          onClick={() => deletePlanMutation.mutate()}
+          loading={deletePlanMutation.isPending}
+        >
+          Delete plan
+        </Button>
+      </div>
+    </Modal>
+    </>
   );
 }

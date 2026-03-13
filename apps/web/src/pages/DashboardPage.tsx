@@ -5,6 +5,11 @@ import {
   Calendar,
   TrendingUp,
   ArrowRight,
+  ListChecks,
+  BedDouble,
+  SkipForward,
+  CheckCircle2,
+  Activity,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -19,6 +24,8 @@ import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { SkipDayModal } from "@/components/ui/skip-day-modal";
+import { useSkipDay } from "@/hooks/useSkipDay";
 
 interface Stats {
   weeklySessionCount: number;
@@ -30,6 +37,22 @@ interface Stats {
 interface WeightEntry {
   date: string;
   weightKg: string;
+}
+
+interface SuggestedDay {
+  planDayId: string;
+  weekIndex: number;
+  dayIndex: number;
+  scheduledDate: string; // YYYY-MM-DD
+  type: string;
+  workoutTemplate: { id: string; name: string } | null;
+  cardioTemplate: { id: string; name: string } | null;
+}
+
+interface ActivePlan {
+  id: string;
+  name: string;
+  suggestedDay: SuggestedDay | null;
 }
 
 function StatCard({
@@ -63,6 +86,155 @@ function StatCard({
   );
 }
 
+function ActivePlanCard({ plan }: { plan: ActivePlan }) {
+  const day = plan.suggestedDay;
+  const isRest = !day || day.type === "rest";
+  const isTraining = !isRest;
+  const weekLabel = day ? `Week ${day.weekIndex + 1} · Day ${day.dayIndex + 1}` : null;
+
+  const scheduledDateLabel = day?.scheduledDate
+    ? new Date(day.scheduledDate + "T00:00:00").toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+
+  const hasWorkout = isTraining && !!day?.workoutTemplate;
+  const hasCardio = isTraining && !!day?.cardioTemplate;
+
+  const skipDay = useSkipDay();
+
+  return (
+    <>
+      {/* Post-skip feedback banner */}
+      {skipDay.skipped && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                <CheckCircle2 className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-amber-800 dark:text-amber-200">Day skipped</p>
+                <p className="text-sm text-amber-700/70 dark:text-amber-300/70 mt-0.5">
+                  Your next planned session is shown below.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="shrink-0 text-amber-700 hover:text-amber-900 dark:text-amber-300"
+                onClick={skipDay.resetSkipped}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Current/next suggested day */}
+      <Card className="border-primary/40 bg-primary/5">
+        <CardContent className="py-4 space-y-3">
+          {/* Plan header */}
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="h-9 w-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0 mt-0.5">
+                {isRest ? (
+                  <BedDouble className="h-4 w-4" />
+                ) : (
+                  <ListChecks className="h-4 w-4" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                  Today's plan
+                </p>
+                <p className="font-semibold truncate">{plan.name}</p>
+                {weekLabel && (
+                  <p className="text-sm text-muted-foreground">
+                    {weekLabel}
+                    {scheduledDateLabel && (
+                      <span className="ml-2 text-xs">· {scheduledDateLabel}</span>
+                    )}
+                  </p>
+                )}
+                {isRest && (
+                  <p className="text-sm text-muted-foreground mt-0.5">Rest day — recover well</p>
+                )}
+              </div>
+            </div>
+
+            {isTraining && day && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={skipDay.openConfirm}
+                aria-label="Skip today's day"
+                className="shrink-0"
+              >
+                <SkipForward className="h-3.5 w-3.5" />
+                Skip
+              </Button>
+            )}
+          </div>
+
+          {/* Workout row */}
+          {hasWorkout && day && (
+            <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/40">
+              <div className="flex items-center gap-2 min-w-0">
+                <Dumbbell className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-sm font-medium truncate">{day.workoutTemplate!.name}</span>
+              </div>
+              <Button size="sm" asChild className="shrink-0">
+                <Link
+                  to="/workout/new"
+                  state={{
+                    templateId: day.workoutTemplate!.id,
+                    templateName: day.workoutTemplate!.name,
+                    planDayId: day.planDayId,
+                    weekIndex: day.weekIndex,
+                    dayIndex: day.dayIndex,
+                  }}
+                >
+                  Start
+                </Link>
+              </Button>
+            </div>
+          )}
+
+          {/* Cardio row */}
+          {hasCardio && day && (
+            <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/40">
+              <div className="flex items-center gap-2 min-w-0">
+                <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-sm font-medium truncate">{day.cardioTemplate!.name}</span>
+              </div>
+              <Button size="sm" variant="outline" asChild className="shrink-0">
+                <Link to="/cardio">Go to Cardio</Link>
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {day && isTraining && (
+        <SkipDayModal
+          open={skipDay.confirmOpen}
+          workoutName={day.workoutTemplate?.name ?? day.cardioTemplate?.name ?? null}
+          weekIndex={day.weekIndex}
+          dayIndex={day.dayIndex}
+          isPending={skipDay.isPending}
+          isError={skipDay.isError}
+          onConfirm={() => skipDay.skip({ weekIndex: day.weekIndex, dayIndex: day.dayIndex })}
+          onClose={skipDay.closeConfirm}
+        />
+      )}
+    </>
+  );
+}
+
 export function DashboardPage() {
   const { data: stats } = useQuery<Stats>({
     queryKey: ["stats"],
@@ -74,6 +246,10 @@ export function DashboardPage() {
     queryFn: () => api.get("/body/weight?limit=30"),
   });
 
+  const { data: activePlan } = useQuery<ActivePlan | null>({
+    queryKey: ["activePlan"],
+    queryFn: () => api.get("/plans/active"),
+  });
   const weightData = weight?.map((w) => ({
     date: w.date.slice(5), // MM-DD
     kg: Number(w.weightKg),
@@ -130,16 +306,13 @@ export function DashboardPage() {
         />
       </div>
 
+      {/* Active plan suggestion */}
+      {activePlan && <ActivePlanCard plan={activePlan} />}
+
       {/* Quick actions */}
       <div>
         <h2 className="font-semibold mb-3">Quick actions</h2>
         <div className="flex flex-wrap gap-3">
-          <Button asChild>
-            <Link to="/workout/new">
-              <Dumbbell className="h-4 w-4" />
-              Start workout
-            </Link>
-          </Button>
           <Button variant="outline" asChild>
             <Link to="/cardio">
               Log run

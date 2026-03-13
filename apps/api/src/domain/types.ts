@@ -92,7 +92,6 @@ export interface ExerciseSet {
   type: "warmup" | "working" | "dropset" | "failure";
   weightKg: number | null;
   reps: number | null;
-  rpe: number | null;
   rir: number | null;
   durationSeconds: number | null;
   restSeconds: number | null;

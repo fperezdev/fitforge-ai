@@ -130,6 +130,10 @@ export const workoutSessions = pgTable("workout_sessions", {
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   notes: text("notes"),
+  // Plan linkage (set when session is started from a plan suggestion)
+  planDayId: uuid("plan_day_id"),
+  weekIndex: integer("week_index"),
+  dayIndex: integer("day_index"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -147,6 +151,10 @@ export const exerciseEntries = pgTable("exercise_entries", {
     .notNull()
     .references(() => exercises.id, { onDelete: "cascade" }),
   order: integer("order").notNull(),
+  targetRepMin: integer("target_rep_min"),
+  targetRepMax: integer("target_rep_max"),
+  targetRir: integer("target_rir"),
+  restSeconds: integer("rest_seconds"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -161,7 +169,6 @@ export const exerciseSets = pgTable("exercise_sets", {
   type: varchar("type", { length: 50 }).notNull(), // 'working' | 'warmup' | 'dropset' | 'failure'
   weightKg: numeric("weight_kg"),
   reps: integer("reps"),
-  rpe: numeric("rpe"),
   rir: integer("rir"),
   durationSeconds: integer("duration_seconds"),
   restSeconds: integer("rest_seconds"),
@@ -414,6 +421,8 @@ export const trainingPlans = pgTable("training_plans", {
   status: varchar("status", { length: 50 }).notNull().default("draft"), // 'draft' | 'active' | 'completed'
   microcycleLength: integer("microcycle_length").notNull().default(7),
   mesocycleLength: integer("mesocycle_length").notNull().default(4),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  startDate: date("start_date"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -452,6 +461,34 @@ export const planDays = pgTable("plan_days", {
   notes: text("notes"),
 });
 
+// ─── Plan Day Logs ────────────────────────────────────────────────────────────
+// One row per plan-day occurrence (calendar slot). Tracks completed / skipped.
+
+export const planDayLogs = pgTable("plan_day_logs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => authUsers.id, { onDelete: "cascade" }),
+  trainingPlanId: uuid("training_plan_id")
+    .notNull()
+    .references(() => trainingPlans.id, { onDelete: "cascade" }),
+  planDayId: uuid("plan_day_id")
+    .notNull()
+    .references(() => planDays.id, { onDelete: "cascade" }),
+  weekIndex: integer("week_index").notNull(),  // 0-based microcycle occurrence
+  dayIndex: integer("day_index").notNull(),    // 0-based day within microcycle
+  // 'completed' | 'skipped'                  — full-day log (legacy / rest days)
+  // 'workout_completed' | 'workout_skipped'  — strength component only
+  // 'cardio_completed'  | 'cardio_skipped'   — cardio component only
+  status: varchar("status", { length: 50 }).notNull(),
+  workoutSessionId: uuid("workout_session_id").references(
+    () => workoutSessions.id,
+    { onDelete: "set null" }
+  ),
+  notes: text("notes"),
+  loggedAt: timestamp("logged_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const workoutTemplatesRelations = relations(
@@ -481,6 +518,7 @@ export const workoutSessionsRelations = relations(
   ({ many }) => ({
     exerciseEntries: many(exerciseEntries),
     personalRecords: many(personalRecords),
+    planDayLogs: many(planDayLogs),
   })
 );
 
@@ -625,5 +663,20 @@ export const planDaysRelations = relations(planDays, ({ one }) => ({
   cardioTemplate: one(cardioTemplates, {
     fields: [planDays.cardioTemplateId],
     references: [cardioTemplates.id],
+  }),
+}));
+
+export const planDayLogsRelations = relations(planDayLogs, ({ one }) => ({
+  trainingPlan: one(trainingPlans, {
+    fields: [planDayLogs.trainingPlanId],
+    references: [trainingPlans.id],
+  }),
+  planDay: one(planDays, {
+    fields: [planDayLogs.planDayId],
+    references: [planDays.id],
+  }),
+  workoutSession: one(workoutSessions, {
+    fields: [planDayLogs.workoutSessionId],
+    references: [workoutSessions.id],
   }),
 }));

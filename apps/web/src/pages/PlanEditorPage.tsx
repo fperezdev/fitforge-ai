@@ -16,6 +16,7 @@ import {
 import {
   SortableContext,
   horizontalListSortingStrategy,
+  verticalListSortingStrategy,
   useSortable,
   arrayMove,
 } from "@dnd-kit/sortable";
@@ -36,6 +37,7 @@ import {
   Flame,
   Weight,
   Trash,
+  GripVertical,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -252,23 +254,168 @@ function ExercisePicker({
   );
 }
 
+// ─── Sortable Strength Row ────────────────────────────────────────────────────
+
+function SortableStrengthRow({
+  row,
+  isEditing,
+  disabled,
+  onUpdate,
+  onRemove,
+}: {
+  row: StrengthRow;
+  isEditing: boolean;
+  disabled?: boolean;
+  onUpdate: (patch: Partial<StrengthRow>) => void;
+  onRemove: () => void;
+}) {
+  const draggable = isEditing && !disabled;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: row._key, disabled: !draggable });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "grid grid-cols-[20px_1fr_56px_96px_56px_68px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 py-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20",
+        isDragging && "opacity-30"
+      )}
+    >
+      {/* Drag handle */}
+      <button
+        {...(draggable ? { ...attributes, ...listeners } : {})}
+        tabIndex={-1}
+        aria-label="Drag to reorder"
+        className={cn(
+          "flex items-center justify-center h-8 w-5 rounded text-muted-foreground/40 transition-colors touch-none",
+          draggable ? "cursor-grab active:cursor-grabbing hover:text-muted-foreground" : "cursor-default"
+        )}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+
+      {/* Exercise name */}
+      <div className="min-w-0 pr-2">
+        <p className="text-sm font-semibold truncate leading-tight mb-0.5">{row.exerciseName}</p>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{row.exerciseMuscle}</p>
+      </div>
+
+      {/* Sets */}
+      <input
+        type="number"
+        min={1}
+        value={row.sets}
+        disabled={disabled}
+        onChange={(e) => onUpdate({ sets: Math.max(1, parseInt(e.target.value) || 1) })}
+        className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      />
+
+      {/* Reps */}
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={1}
+          value={row.repMin}
+          disabled={disabled}
+          onChange={(e) => onUpdate({ repMin: Math.max(1, parseInt(e.target.value) || 1) })}
+          className="w-full h-8 rounded-md border border-input bg-background p-0 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        />
+        <span className="text-muted-foreground/60 text-xs font-medium shrink-0">–</span>
+        <input
+          type="number"
+          min={1}
+          value={row.repMax}
+          disabled={disabled}
+          onChange={(e) => onUpdate({ repMax: Math.max(1, parseInt(e.target.value) || 1) })}
+          className="w-full h-8 rounded-md border border-input bg-background p-0 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        />
+      </div>
+
+      {/* RIR */}
+      <input
+        type="number"
+        min={0}
+        placeholder="—"
+        value={row.rir ?? ""}
+        disabled={disabled}
+        onChange={(e) =>
+          onUpdate({ rir: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0) })
+        }
+        className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+      />
+
+      {/* Rest */}
+      <div className="relative">
+        <input
+          type="number"
+          min={0}
+          step={15}
+          placeholder="—"
+          value={row.restSeconds ?? ""}
+          disabled={disabled}
+          onChange={(e) =>
+            onUpdate({
+              restSeconds: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
+            })
+          }
+          className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+        />
+        {row.restSeconds != null && (
+          <span className="absolute right-1.5 bottom-1 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">s</span>
+        )}
+      </div>
+
+      {/* Delete */}
+      <button
+        onClick={onRemove}
+        disabled={disabled}
+        className="group flex items-center justify-center h-8 w-8 ml-auto rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+        aria-label="Remove exercise"
+      >
+        <Trash2 className="h-[14px] w-[14px] opacity-70 group-hover:opacity-100 transition-opacity" />
+      </button>
+    </div>
+  );
+}
+
 // ─── Strength Editor ──────────────────────────────────────────────────────────
 
 function StrengthEditor({
   rows,
+  isEditing,
+  disabled,
   onChange,
 }: {
   rows: StrengthRow[];
+  isEditing: boolean;
+  disabled?: boolean;
   onChange: (rows: StrengthRow[]) => void;
 }) {
   const [showPicker, setShowPicker] = useState(false);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
 
-  const update = (key: string, patch: Partial<StrengthRow>) => {
-    onChange(rows.map((r) => (r._key === key ? { ...r, ...patch } : r)));
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+  );
 
-  const remove = (key: string) => {
-    onChange(rows.filter((r) => r._key !== key));
+  const activeRow = activeKey != null ? rows.find((r) => r._key === activeKey) ?? null : null;
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveKey(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = rows.findIndex((r) => r._key === active.id);
+    const newIndex = rows.findIndex((r) => r._key === over.id);
+    if (oldIndex !== -1 && newIndex !== -1) {
+      onChange(arrayMove(rows, oldIndex, newIndex));
+    }
   };
 
   const addExercise = (ex: Exercise) => {
@@ -292,10 +439,10 @@ function StrengthEditor({
   return (
     <div className="space-y-3">
       {rows.length > 0 && (
-        <div className="grid grid-cols-[1fr_56px_96px_56px_68px_36px] gap-x-2 px-2 pb-1 bg-muted/30 rounded-t-md pt-2 border-b border-border">
-          {["Exercise", "Sets", "Reps", "RIR", "Rest", ""].map((h) => (
+        <div className="grid grid-cols-[20px_1fr_56px_96px_56px_68px_36px] gap-x-2 px-2 pb-1 bg-muted/30 rounded-t-md pt-2 border-b border-border">
+          {["", "Exercise", "Sets", "Reps", "RIR", "Rest", ""].map((h, i) => (
             <span
-              key={h}
+              key={i}
               className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center first:text-left"
             >
               {h}
@@ -304,96 +451,40 @@ function StrengthEditor({
         </div>
       )}
 
-      <div className="space-y-2">
-        {rows.map((row) => (
-          <div
-            key={row._key}
-            className="grid grid-cols-[1fr_56px_96px_56px_68px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 pl-3 py-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20"
-          >
-            {/* Exercise name */}
-            <div className="min-w-0 pr-2">
-              <p className="text-sm font-semibold truncate leading-tight mb-0.5">{row.exerciseName}</p>
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{row.exerciseMuscle}</p>
-            </div>
-
-            {/* Sets */}
-            <input
-              type="number"
-              min={1}
-              value={row.sets}
-              onChange={(e) =>
-                update(row._key, { sets: Math.max(1, parseInt(e.target.value) || 1) })
-              }
-              className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-
-            {/* Reps (min–max shown as two inputs) */}
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                min={1}
-                value={row.repMin}
-                onChange={(e) =>
-                  update(row._key, { repMin: Math.max(1, parseInt(e.target.value) || 1) })
-                }
-                className="w-full h-8 rounded-md border border-input bg-background p-0 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={(e) => setActiveKey(e.active.id as string)}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={rows.map((r) => r._key)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <SortableStrengthRow
+                key={row._key}
+                row={row}
+                isEditing={isEditing}
+                disabled={disabled}
+                onUpdate={(patch) => onChange(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))}
+                onRemove={() => onChange(rows.filter((r) => r._key !== row._key))}
               />
-              <span className="text-muted-foreground/60 text-xs font-medium shrink-0">–</span>
-              <input
-                type="number"
-                min={1}
-                value={row.repMax}
-                onChange={(e) =>
-                  update(row._key, { repMax: Math.max(1, parseInt(e.target.value) || 1) })
-                }
-                className="w-full h-8 rounded-md border border-input bg-background p-0 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-
-            {/* RIR */}
-            <input
-              type="number"
-              min={0}
-              placeholder="—"
-              value={row.rir ?? ""}
-              onChange={(e) =>
-                update(row._key, {
-                  rir: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
-                })
-              }
-              className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-
-            {/* Rest (seconds) */}
-            <div className="relative">
-              <input
-                type="number"
-                min={0}
-                step={15}
-                placeholder="—"
-                value={row.restSeconds ?? ""}
-                onChange={(e) =>
-                  update(row._key, {
-                    restSeconds:
-                      e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
-                  })
-                }
-                className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              {row.restSeconds && <span className="absolute right-1.5 bottom-1 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">s</span>}
-            </div>
-
-            {/* Delete */}
-            <button
-              onClick={() => remove(row._key)}
-              className="group flex items-center justify-center h-8 w-8 ml-auto rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40"
-              aria-label="Remove exercise"
-            >
-              <Trash2 className="h-[14px] w-[14px] opacity-70 group-hover:opacity-100 transition-opacity" />
-            </button>
+            ))}
           </div>
-        ))}
-      </div>
+        </SortableContext>
+
+        <DragOverlay dropAnimation={null}>
+          {activeRow && (
+            <div className="grid grid-cols-[20px_1fr_56px_96px_56px_68px_36px] gap-x-2 items-center rounded-lg border border-primary/40 bg-card px-2 py-2 shadow-lg opacity-95">
+              <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40" />
+              <div className="min-w-0 pr-2">
+                <p className="text-sm font-semibold truncate leading-tight mb-0.5">{activeRow.exerciseName}</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{activeRow.exerciseMuscle}</p>
+              </div>
+              <div /><div /><div /><div /><div />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
 
       {showPicker ? (
         <div className="pt-2 animate-in slide-in-from-top-2 fade-in duration-200">
@@ -403,12 +494,7 @@ function StrengthEditor({
           />
         </div>
       ) : (
-        <Button
-          variant="dashed"
-          size="sm"
-          onClick={() => setShowPicker(true)}
-          className="w-full mt-2"
-        >
+        <Button variant="dashed" size="sm" disabled={disabled} onClick={() => setShowPicker(true)} className="w-full mt-2">
           <Plus className="h-3.5 w-3.5 mr-1.5" />
           Add exercise
         </Button>
@@ -417,34 +503,160 @@ function StrengthEditor({
   );
 }
 
+// ─── Sortable Cardio Row ──────────────────────────────────────────────────────
+
+function SortableCardioRow({
+  row,
+  isEditing,
+  disabled,
+  onUpdate,
+  onRemove,
+}: {
+  row: CardioRow;
+  isEditing: boolean;
+  disabled?: boolean;
+  onUpdate: (patch: Partial<CardioRow>) => void;
+  onRemove: () => void;
+}) {
+  const draggable = isEditing && !disabled;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: row._key, disabled: !draggable });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "grid grid-cols-[20px_1fr_56px_72px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 py-2 shadow-sm transition-all focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20",
+        isDragging && "opacity-30"
+      )}
+    >
+      {/* Drag handle */}
+      <button
+        {...(draggable ? { ...attributes, ...listeners } : {})}
+        tabIndex={-1}
+        aria-label="Drag to reorder"
+        className={cn(
+          "flex items-center justify-center h-8 w-5 rounded text-muted-foreground/40 transition-colors touch-none",
+          draggable ? "cursor-grab active:cursor-grabbing hover:text-muted-foreground" : "cursor-default"
+        )}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+
+      {/* Name */}
+      <input
+        type="text"
+        value={row.name}
+        disabled={disabled}
+        onChange={(e) => onUpdate({ name: e.target.value })}
+        placeholder="e.g. Easy run"
+        className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+      />
+
+      {/* Zone */}
+      <div className="relative">
+        {row.zone != null && (
+          <span className="absolute left-2 top-1.5 text-[10px] font-semibold text-amber-600/50 pointer-events-none">Z</span>
+        )}
+        <input
+          type="number"
+          min={1}
+          max={5}
+          placeholder="—"
+          value={row.zone ?? ""}
+          disabled={disabled}
+          onChange={(e) =>
+            onUpdate({
+              zone: e.target.value === "" ? null : Math.min(5, Math.max(1, parseInt(e.target.value) || 1)),
+            })
+          }
+          className={cn(
+            "w-full h-8 rounded-md border border-input bg-background text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed",
+            row.zone != null ? "pl-4" : ""
+          )}
+        />
+      </div>
+
+      {/* km */}
+      <div className="relative">
+        <input
+          type="number"
+          min={0}
+          step={0.5}
+          placeholder="—"
+          value={row.kilometers ?? ""}
+          disabled={disabled}
+          onChange={(e) =>
+            onUpdate({
+              kilometers: e.target.value === "" ? null : Math.max(0, parseFloat(e.target.value) || 0),
+            })
+          }
+          className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 pr-5 text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        />
+        {row.kilometers != null && (
+          <span className="absolute right-1.5 bottom-1.5 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">km</span>
+        )}
+      </div>
+
+      {/* Delete */}
+      <button
+        onClick={onRemove}
+        disabled={disabled}
+        className="group flex items-center justify-center h-8 w-8 ml-auto rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+        aria-label="Remove activity"
+      >
+        <Trash2 className="h-[14px] w-[14px] opacity-70 group-hover:opacity-100 transition-opacity" />
+      </button>
+    </div>
+  );
+}
+
 // ─── Cardio Editor ────────────────────────────────────────────────────────────
 
 function CardioEditor({
   rows,
+  isEditing,
+  disabled,
   onChange,
 }: {
   rows: CardioRow[];
+  isEditing: boolean;
+  disabled?: boolean;
   onChange: (rows: CardioRow[]) => void;
 }) {
-  const update = (key: string, patch: Partial<CardioRow>) => {
-    onChange(rows.map((r) => (r._key === key ? { ...r, ...patch } : r)));
-  };
+  const [activeKey, setActiveKey] = useState<string | null>(null);
 
-  const remove = (key: string) => {
-    onChange(rows.filter((r) => r._key !== key));
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+  );
 
-  const addRow = () => {
-    onChange([...rows, { _key: uid(), name: "", zone: null, kilometers: null }]);
+  const activeRow = activeKey != null ? rows.find((r) => r._key === activeKey) ?? null : null;
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveKey(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = rows.findIndex((r) => r._key === active.id);
+    const newIndex = rows.findIndex((r) => r._key === over.id);
+    if (oldIndex !== -1 && newIndex !== -1) {
+      onChange(arrayMove(rows, oldIndex, newIndex));
+    }
   };
 
   return (
     <div className="space-y-3">
       {rows.length > 0 && (
-        <div className="grid grid-cols-[1fr_56px_72px_36px] gap-x-2 px-2 pb-1 bg-muted/30 rounded-t-md pt-2 border-b border-border">
-          {["Activity", "Zone", "km", ""].map((h) => (
+        <div className="grid grid-cols-[20px_1fr_56px_72px_36px] gap-x-2 px-2 pb-1 bg-muted/30 rounded-t-md pt-2 border-b border-border">
+          {["", "Activity", "Zone", "km", ""].map((h, i) => (
             <span
-              key={h}
+              key={i}
               className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center first:text-left"
             >
               {h}
@@ -453,75 +665,39 @@ function CardioEditor({
         </div>
       )}
 
-      <div className="space-y-2">
-        {rows.map((row) => (
-          <div
-            key={row._key}
-            className="grid grid-cols-[1fr_56px_72px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 py-2 shadow-sm transition-all focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20"
-          >
-            <input
-              type="text"
-              value={row.name}
-              onChange={(e) => update(row._key, { name: e.target.value })}
-              placeholder="e.g. Easy run"
-              className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
-            <div className="relative">
-              {row.zone != null && <span className="absolute left-2 top-1.5 text-[10px] font-semibold text-amber-600/50 pointer-events-none">Z</span>}
-              <input
-                type="number"
-                min={1}
-                max={5}
-                placeholder="—"
-                value={row.zone ?? ""}
-                onChange={(e) =>
-                  update(row._key, {
-                    zone:
-                      e.target.value === ""
-                        ? null
-                        : Math.min(5, Math.max(1, parseInt(e.target.value) || 1)),
-                  })
-                }
-                className={cn(
-                  "w-full h-8 rounded-md border border-input bg-background text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500",
-                  row.zone != null ? "pl-4" : ""
-                )}
-              />
-            </div>
-            <div className="relative">
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                placeholder="—"
-                value={row.kilometers ?? ""}
-                onChange={(e) =>
-                  update(row._key, {
-                    kilometers:
-                      e.target.value === "" ? null : Math.max(0, parseFloat(e.target.value) || 0),
-                  })
-                }
-                className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 pr-5 text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              />
-              {row.kilometers != null && <span className="absolute right-1.5 bottom-1.5 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">km</span>}
-            </div>
-            <button
-              onClick={() => remove(row._key)}
-              className="group flex items-center justify-center h-8 w-8 ml-auto rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40"
-              aria-label="Remove activity"
-            >
-              <Trash2 className="h-[14px] w-[14px] opacity-70 group-hover:opacity-100 transition-opacity" />
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <Button
-        variant="dashed"
-        size="sm"
-        onClick={addRow}
-        className="w-full mt-2"
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={(e) => setActiveKey(e.active.id as string)}
+        onDragEnd={handleDragEnd}
       >
+        <SortableContext items={rows.map((r) => r._key)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <SortableCardioRow
+                key={row._key}
+                row={row}
+                isEditing={isEditing}
+                disabled={disabled}
+                onUpdate={(patch) => onChange(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))}
+                onRemove={() => onChange(rows.filter((r) => r._key !== row._key))}
+              />
+            ))}
+          </div>
+        </SortableContext>
+
+        <DragOverlay dropAnimation={null}>
+          {activeRow && (
+            <div className="grid grid-cols-[20px_1fr_56px_72px_36px] gap-x-2 items-center rounded-lg border border-amber-500/40 bg-card px-2 py-2 shadow-lg opacity-95">
+              <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40" />
+              <p className="text-sm font-medium truncate">{activeRow.name || "—"}</p>
+              <div /><div /><div />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+
+      <Button variant="dashed" size="sm" disabled={disabled} onClick={() => onChange([...rows, { _key: uid(), name: "", zone: null, kilometers: null }])} className="w-full mt-2">
         <Plus className="h-3.5 w-3.5 mr-1.5" />
         Add activity
       </Button>
@@ -1419,7 +1595,7 @@ function DayView({
 
           {!isLocked && (
             isEditing ? (
-              <Button size="sm" variant="outline" onClick={cancelEdit}>
+              <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saveMutation.isPending}>
                 <X className="h-3.5 w-3.5 mr-1" />
                 Cancel
               </Button>
@@ -1475,6 +1651,8 @@ function DayView({
               ) : (
                 <StrengthEditor
                   rows={strengthRows}
+                  isEditing={isEditing}
+                  disabled={saveMutation.isPending}
                   onChange={(r) => { setStrengthRows(r); markDirty(); }}
                 />
               )}
@@ -1496,6 +1674,8 @@ function DayView({
               ) : (
                 <CardioEditor
                   rows={cardioRows}
+                  isEditing={isEditing}
+                  disabled={saveMutation.isPending}
                   onChange={(r) => { setCardioRows(r); markDirty(); }}
                 />
               )}

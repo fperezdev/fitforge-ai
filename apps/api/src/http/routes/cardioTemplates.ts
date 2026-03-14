@@ -73,7 +73,7 @@ export const cardioTemplateRoutes = new Hono()
           ...e,
           kilometers: e.kilometers ?? null,
           cardioTemplateId: template.id,
-        }))
+        })),
       );
     }
 
@@ -104,7 +104,7 @@ export const cardioTemplateRoutes = new Hono()
           ...e,
           kilometers: e.kilometers ?? null,
           cardioTemplateId: id,
-        }))
+        })),
       );
     }
 

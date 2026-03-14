@@ -2,11 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, desc } from "drizzle-orm";
-import {
-  coachConversations,
-  coachMessages,
-  coachRequests,
-} from "@fitforge/db";
+import { coachConversations, coachMessages, coachRequests } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
 import { authMiddleware, getUserId } from "../middleware/auth.js";
 import { buildCoachContext } from "../../infrastructure/coach-context.js";
@@ -34,7 +30,7 @@ export const coachRoutes = new Hono()
       z.object({
         title: z.string().optional(),
         mode: z.enum(["advice", "plan"]).optional(),
-      })
+      }),
     ),
     async (c) => {
       const userId = getUserId(c);
@@ -47,7 +43,7 @@ export const coachRoutes = new Hono()
         .returning();
 
       return c.json(conversation, 201);
-    }
+    },
   )
 
   .patch(
@@ -60,10 +56,7 @@ export const coachRoutes = new Hono()
       const db = getDb();
 
       const conversation = await db.query.coachConversations.findFirst({
-        where: and(
-          eq(coachConversations.id, id),
-          eq(coachConversations.userId, userId)
-        ),
+        where: and(eq(coachConversations.id, id), eq(coachConversations.userId, userId)),
       });
       if (!conversation) return c.json({ error: "Conversation not found" }, 404);
 
@@ -74,7 +67,7 @@ export const coachRoutes = new Hono()
         .returning();
 
       return c.json(updated);
-    }
+    },
   )
 
   .get("/conversations/:id/messages", async (c) => {
@@ -83,10 +76,7 @@ export const coachRoutes = new Hono()
     const db = getDb();
 
     const conversation = await db.query.coachConversations.findFirst({
-      where: and(
-        eq(coachConversations.id, id),
-        eq(coachConversations.userId, userId)
-      ),
+      where: and(eq(coachConversations.id, id), eq(coachConversations.userId, userId)),
     });
     if (!conversation) return c.json({ error: "Conversation not found" }, 404);
 
@@ -111,10 +101,7 @@ export const coachRoutes = new Hono()
 
       // Verify conversation ownership
       const conversation = await db.query.coachConversations.findFirst({
-        where: and(
-          eq(coachConversations.id, id),
-          eq(coachConversations.userId, userId)
-        ),
+        where: and(eq(coachConversations.id, id), eq(coachConversations.userId, userId)),
       });
       if (!conversation) return c.json({ error: "Conversation not found" }, 404);
 
@@ -153,15 +140,9 @@ export const coachRoutes = new Hono()
             let fullResponse = "";
 
             try {
-              fullResponse = await streamCoachResponse(
-                content,
-                context,
-                (chunk) => {
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`)
-                  );
-                }
-              );
+              fullResponse = await streamCoachResponse(content, context, (chunk) => {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`));
+              });
 
               // Save assistant message
               const [msg] = await db
@@ -191,13 +172,10 @@ export const coachRoutes = new Hono()
                 .where(eq(coachConversations.id, id));
 
               controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ done: true, messageId: msg.id })}\n\n`
-                )
+                encoder.encode(`data: ${JSON.stringify({ done: true, messageId: msg.id })}\n\n`),
               );
             } catch (err) {
-              const errorMsg =
-                err instanceof Error ? err.message : "Unknown error";
+              const errorMsg = err instanceof Error ? err.message : "Unknown error";
               console.error("[coach] LLM request failed:", err);
               await db
                 .update(coachRequests)
@@ -206,8 +184,8 @@ export const coachRoutes = new Hono()
 
               controller.enqueue(
                 encoder.encode(
-                  `data: ${JSON.stringify({ error: "Failed to get a response. Please try again." })}\n\n`
-                )
+                  `data: ${JSON.stringify({ error: "Failed to get a response. Please try again." })}\n\n`,
+                ),
               );
             } finally {
               controller.close();
@@ -220,7 +198,7 @@ export const coachRoutes = new Hono()
             "Cache-Control": "no-cache",
             Connection: "keep-alive",
           },
-        }
+        },
       );
-    }
+    },
   );

@@ -8,8 +8,6 @@ import {
   weightEntries,
   bodyMeasurements,
   planDayLogs,
-  planDays,
-  planMicrocycles,
   trainingPlans,
 } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
@@ -18,9 +16,7 @@ import { authMiddleware, getUserId } from "../middleware/auth.js";
 const createCardioSchema = z.object({
   type: z.string(),
   startedAt: z.string().datetime().optional(),
-  status: z
-    .enum(["in_progress", "completed", "cancelled"])
-    .default("completed"),
+  status: z.enum(["in_progress", "completed", "cancelled"]).default("completed"),
   distanceMeters: z.number().int().optional().nullable(),
   durationSeconds: z.number().int().optional().nullable(),
   avgPaceSecondsPerKm: z.number().int().optional().nullable(),
@@ -39,7 +35,7 @@ const createCardioSchema = z.object({
         kilometer: z.number().int(),
         durationSeconds: z.number().int(),
         paceSecondsPerKm: z.number().int(),
-      })
+      }),
     )
     .optional()
     .default([]),
@@ -149,32 +145,32 @@ export const cardioRoutes = new Hono()
     return c.json(session, 201);
   })
 
-  .patch(
-    "/:id",
-    zValidator("json", createCardioSchema.partial()),
-    async (c) => {
-      const userId = getUserId(c);
-      const { id } = c.req.param();
-      const { splits, planDayId: _pd, weekIndex: _wi, dayIndex: _di, ...data } = c.req.valid("json");
-      const db = getDb();
+  .patch("/:id", zValidator("json", createCardioSchema.partial()), async (c) => {
+    const userId = getUserId(c);
+    const { id } = c.req.param();
+    const {
+      splits: _splits,
+      planDayId: _pd,
+      weekIndex: _wi,
+      dayIndex: _di,
+      ...data
+    } = c.req.valid("json");
+    const db = getDb();
 
-      const { startedAt, ...rest } = data;
-      const [updated] = await db
-        .update(cardioSessions)
-        .set({
-          ...rest,
-          ...(startedAt != null ? { startedAt: new Date(startedAt) } : {}),
-          updatedAt: new Date(),
-        })
-        .where(
-          and(eq(cardioSessions.id, id), eq(cardioSessions.userId, userId))
-        )
-        .returning();
+    const { startedAt, ...rest } = data;
+    const [updated] = await db
+      .update(cardioSessions)
+      .set({
+        ...rest,
+        ...(startedAt != null ? { startedAt: new Date(startedAt) } : {}),
+        updatedAt: new Date(),
+      })
+      .where(and(eq(cardioSessions.id, id), eq(cardioSessions.userId, userId)))
+      .returning();
 
-      if (!updated) return c.json({ error: "Session not found" }, 404);
-      return c.json(updated);
-    }
-  );
+    if (!updated) return c.json({ error: "Session not found" }, 404);
+    return c.json(updated);
+  });
 
 export const bodyRoutes = new Hono()
   .use("*", authMiddleware)

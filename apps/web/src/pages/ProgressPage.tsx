@@ -24,7 +24,6 @@ interface PR {
   exercise: { name: string; primaryMuscle: string };
 }
 
-
 interface BodyMeasurement {
   id: string;
   date: string;
@@ -70,9 +69,7 @@ export function ProgressPage() {
       prMap.set(key, pr);
     }
   }
-  const latestPRs = Array.from(prMap.values()).sort(
-    (a, b) => Number(b.value) - Number(a.value)
-  );
+  const latestPRs = Array.from(prMap.values()).sort((a, b) => Number(b.value) - Number(a.value));
 
   const isEmpty = weightData.length <= 1 && latestPRs.length === 0 && measurements.length === 0;
 
@@ -98,7 +95,8 @@ export function ProgressPage() {
               <div>
                 <p className="font-semibold text-lg">No progress data yet</p>
                 <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                  Start logging workouts to track your personal records, body weight, and measurements.
+                  Start logging workouts to track your personal records, body weight, and
+                  measurements.
                 </p>
               </div>
               <Button asChild className="mt-2">
@@ -122,12 +120,7 @@ export function ProgressPage() {
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={weightData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <YAxis
                   domain={["auto", "auto"]}
                   tick={{ fontSize: 11 }}
@@ -160,47 +153,45 @@ export function ProgressPage() {
 
       {/* Personal Records */}
       {(!isEmpty || latestPRs.length > 0) && (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Dumbbell className="h-4 w-4 text-muted-foreground" />
-            Personal records (estimated 1RM)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {latestPRs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No records yet. Log some workouts to track your PRs.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {latestPRs.map((pr) => (
-                <div
-                  key={pr.id}
-                  className="flex items-center justify-between py-2 border-b border-border last:border-0"
-                >
-                  <div>
-                    <p className="font-medium text-sm">{pr.exercise.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(pr.achievedAt).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </p>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Dumbbell className="h-4 w-4 text-muted-foreground" />
+              Personal records (estimated 1RM)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {latestPRs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No records yet. Log some workouts to track your PRs.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {latestPRs.map((pr) => (
+                  <div
+                    key={pr.id}
+                    className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                  >
+                    <div>
+                      <p className="font-medium text-sm">{pr.exercise.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(pr.achievedAt).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="success">{Number(pr.value).toFixed(1)} kg</Badge>
+                      <Badge variant="secondary">{pr.exercise.primaryMuscle ?? "—"}</Badge>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="success">
-                      {Number(pr.value).toFixed(1)} kg
-                    </Badge>
-                    <Badge variant="secondary">{pr.exercise.primaryMuscle ?? "—"}</Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Body measurements */}
@@ -221,15 +212,9 @@ export function ProgressPage() {
                 >
                   <span className="text-muted-foreground">{m.date}</span>
                   <div className="flex gap-3">
-                    {m.bodyFatPercent && (
-                      <span>BF: {Number(m.bodyFatPercent).toFixed(1)}%</span>
-                    )}
-                    {m.waistCm && (
-                      <span>Waist: {Number(m.waistCm).toFixed(1)} cm</span>
-                    )}
-                    {m.chestCm && (
-                      <span>Chest: {Number(m.chestCm).toFixed(1)} cm</span>
-                    )}
+                    {m.bodyFatPercent && <span>BF: {Number(m.bodyFatPercent).toFixed(1)}%</span>}
+                    {m.waistCm && <span>Waist: {Number(m.waistCm).toFixed(1)} cm</span>}
+                    {m.chestCm && <span>Chest: {Number(m.chestCm).toFixed(1)} cm</span>}
                   </div>
                 </div>
               ))}

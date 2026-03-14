@@ -13,10 +13,7 @@ const updateProfileSchema = z.object({
   heightCm: z.number().positive().optional().nullable(),
   unitPreference: z.enum(["metric", "imperial"]).optional(),
   fitnessGoal: z.string().optional().nullable(),
-  experienceLevel: z
-    .enum(["beginner", "intermediate", "advanced"])
-    .optional()
-    .nullable(),
+  experienceLevel: z.enum(["beginner", "intermediate", "advanced"]).optional().nullable(),
   injuries: z.string().optional().nullable(),
 });
 

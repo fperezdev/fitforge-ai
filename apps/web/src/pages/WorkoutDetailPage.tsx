@@ -39,7 +39,11 @@ export function WorkoutDetailPage() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState("");
 
-  const { data: session, isLoading, isError } = useQuery<SessionDetail>({
+  const {
+    data: session,
+    isLoading,
+    isError,
+  } = useQuery<SessionDetail>({
     queryKey: ["session", id],
     queryFn: () => api.get(`/sessions/${id}`),
   });
@@ -72,21 +76,27 @@ export function WorkoutDetailPage() {
     );
   }
 
-  const duration =
-    session.completedAt
-      ? Math.floor(
-          (new Date(session.completedAt).getTime() - new Date(session.startedAt).getTime()) / 1000
-        )
-      : null;
+  const duration = session.completedAt
+    ? Math.floor(
+        (new Date(session.completedAt).getTime() - new Date(session.startedAt).getTime()) / 1000,
+      )
+    : null;
 
   const totalSets = session.exerciseEntries.flatMap((e) => e.sets).length;
-  const completedSets = session.exerciseEntries.flatMap((e) => e.sets).filter((s) => s.completed).length;
+  const completedSets = session.exerciseEntries
+    .flatMap((e) => e.sets)
+    .filter((s) => s.completed).length;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Button variant="ghost" size="sm" onClick={() => navigate("/workout")} className="-ml-2 mb-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate("/workout")}
+          className="-ml-2 mb-3"
+        >
           <ArrowLeft className="h-4 w-4" />
           Workouts
         </Button>
@@ -102,7 +112,10 @@ export function WorkoutDetailPage() {
               })}
             </p>
           </div>
-          <Badge variant={session.status === "completed" ? "success" : "secondary"} className="shrink-0 mt-1">
+          <Badge
+            variant={session.status === "completed" ? "success" : "secondary"}
+            className="shrink-0 mt-1"
+          >
             {session.status}
           </Badge>
         </div>
@@ -125,7 +138,9 @@ export function WorkoutDetailPage() {
         <Card>
           <CardContent className="py-4 text-center">
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">Sets</p>
-            <p className="text-lg font-bold">{completedSets}/{totalSets}</p>
+            <p className="text-lg font-bold">
+              {completedSets}/{totalSets}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -134,12 +149,17 @@ export function WorkoutDetailPage() {
       <Card>
         <CardContent className="py-4">
           <div className="flex items-center justify-between mb-1.5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Notes
+            </p>
             {!editingNotes && (
               <button
                 type="button"
                 aria-label="Edit notes"
-                onClick={() => { setNotesValue(session.notes ?? ""); setEditingNotes(true); }}
+                onClick={() => {
+                  setNotesValue(session.notes ?? "");
+                  setEditingNotes(true);
+                }}
                 className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Pencil className="h-3.5 w-3.5" />
@@ -221,7 +241,7 @@ export function WorkoutDetailPage() {
                         <ChevronDown
                           className={cn(
                             "h-4 w-4 text-muted-foreground transition-transform shrink-0",
-                            isExpanded && "rotate-180"
+                            isExpanded && "rotate-180",
                           )}
                         />
                       </div>
@@ -247,7 +267,7 @@ export function WorkoutDetailPage() {
                             key={set.id}
                             className={cn(
                               "grid grid-cols-[2rem_1fr_1fr_1fr] gap-2 items-center py-1.5 rounded px-1",
-                              set.completed && "bg-emerald-500/5"
+                              set.completed && "bg-emerald-500/5",
                             )}
                           >
                             <span className="text-xs text-muted-foreground font-mono text-center">

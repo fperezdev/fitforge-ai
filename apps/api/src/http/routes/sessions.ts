@@ -7,11 +7,8 @@ import {
   exerciseEntries,
   exerciseSets,
   personalRecords,
-  exercises,
   workoutTemplates,
-  templateExercises,
   trainingPlans,
-  planMicrocycles,
   planDays,
   planDayLogs,
 } from "@fitforge/db";
@@ -66,10 +63,7 @@ export const sessionRoutes = new Hono()
     const db = getDb();
 
     const session = await db.query.workoutSessions.findFirst({
-      where: and(
-        eq(workoutSessions.id, id),
-        eq(workoutSessions.userId, userId)
-      ),
+      where: and(eq(workoutSessions.id, id), eq(workoutSessions.userId, userId)),
       with: {
         exerciseEntries: {
           with: {
@@ -96,18 +90,12 @@ export const sessionRoutes = new Hono()
     });
 
     if (!activePlan) {
-      return c.json(
-        { error: "No active training plan. Activate a plan to start a workout." },
-        403
-      );
+      return c.json({ error: "No active training plan. Activate a plan to start a workout." }, 403);
     }
 
     // Guard: planDayId must be provided and must belong to the active plan
     if (!data.planDayId || data.weekIndex == null || data.dayIndex == null) {
-      return c.json(
-        { error: "planDayId, weekIndex, and dayIndex are required." },
-        400
-      );
+      return c.json({ error: "planDayId, weekIndex, and dayIndex are required." }, 400);
     }
 
     // Validate the planDayId belongs to the user's active plan
@@ -150,10 +138,7 @@ export const sessionRoutes = new Hono()
     // Seed exercises from template when templateId is provided
     if (data.templateId) {
       const template = await db.query.workoutTemplates.findFirst({
-        where: and(
-          eq(workoutTemplates.id, data.templateId),
-          eq(workoutTemplates.userId, userId)
-        ),
+        where: and(eq(workoutTemplates.id, data.templateId), eq(workoutTemplates.userId, userId)),
         with: {
           templateExercises: {
             orderBy: (te, { asc }) => [asc(te.order)],
@@ -181,7 +166,7 @@ export const sessionRoutes = new Hono()
               targetRepMax: te.targetRepMax,
               targetRir: te.rir,
               restSeconds: te.restSeconds,
-            }))
+            })),
           )
           .returning();
 
@@ -213,7 +198,7 @@ export const sessionRoutes = new Hono()
         name: z.string().optional().nullable(),
         status: z.enum(["in_progress", "completed", "cancelled"]).optional(),
         notes: z.string().optional().nullable(),
-      })
+      }),
     ),
     async (c) => {
       const userId = getUserId(c);
@@ -221,8 +206,7 @@ export const sessionRoutes = new Hono()
       const updates = c.req.valid("json");
       const db = getDb();
 
-      const completedAt =
-        updates.status === "completed" ? new Date() : undefined;
+      const completedAt = updates.status === "completed" ? new Date() : undefined;
 
       const [updated] = await db
         .update(workoutSessions)
@@ -231,109 +215,90 @@ export const sessionRoutes = new Hono()
           ...(completedAt ? { completedAt } : {}),
           updatedAt: new Date(),
         })
-        .where(
-          and(
-            eq(workoutSessions.id, id),
-            eq(workoutSessions.userId, userId)
-          )
-        )
+        .where(and(eq(workoutSessions.id, id), eq(workoutSessions.userId, userId)))
         .returning();
 
       if (!updated) return c.json({ error: "Session not found" }, 404);
       return c.json(updated);
-    }
+    },
   )
 
   // Add exercise to session
-  .post(
-    "/:id/exercises",
-    zValidator("json", addExerciseSchema),
-    async (c) => {
-      const userId = getUserId(c);
-      const { id } = c.req.param();
-      const data = c.req.valid("json");
-      const db = getDb();
+  .post("/:id/exercises", zValidator("json", addExerciseSchema), async (c) => {
+    const userId = getUserId(c);
+    const { id } = c.req.param();
+    const data = c.req.valid("json");
+    const db = getDb();
 
-      // Verify session ownership
-      const session = await db.query.workoutSessions.findFirst({
-        where: and(
-          eq(workoutSessions.id, id),
-          eq(workoutSessions.userId, userId)
-        ),
-      });
-      if (!session) return c.json({ error: "Session not found" }, 404);
+    // Verify session ownership
+    const session = await db.query.workoutSessions.findFirst({
+      where: and(eq(workoutSessions.id, id), eq(workoutSessions.userId, userId)),
+    });
+    if (!session) return c.json({ error: "Session not found" }, 404);
 
-      const [entry] = await db
-        .insert(exerciseEntries)
-        .values({ workoutSessionId: id, ...data })
-        .returning();
+    const [entry] = await db
+      .insert(exerciseEntries)
+      .values({ workoutSessionId: id, ...data })
+      .returning();
 
-      return c.json(entry, 201);
-    }
-  )
+    return c.json(entry, 201);
+  })
 
   // Log a set
-  .post(
-    "/:id/exercises/:entryId/sets",
-    zValidator("json", logSetSchema),
-    async (c) => {
-      const userId = getUserId(c);
-      const { id, entryId } = c.req.param();
-      const data = c.req.valid("json");
-      const db = getDb();
+  .post("/:id/exercises/:entryId/sets", zValidator("json", logSetSchema), async (c) => {
+    const userId = getUserId(c);
+    const { id, entryId } = c.req.param();
+    const data = c.req.valid("json");
+    const db = getDb();
 
-      // Verify ownership via session
-      const entry = await db.query.exerciseEntries.findFirst({
-        where: eq(exerciseEntries.id, entryId),
-        with: { workoutSession: true },
+    // Verify ownership via session
+    const entry = await db.query.exerciseEntries.findFirst({
+      where: eq(exerciseEntries.id, entryId),
+      with: { workoutSession: true },
+    });
+
+    if (!entry || entry.workoutSession.userId !== userId) {
+      return c.json({ error: "Not found" }, 404);
+    }
+
+    const [set] = await db
+      .insert(exerciseSets)
+      .values({
+        exerciseEntryId: entryId,
+        ...data,
+      })
+      .returning();
+
+    // Check for personal record (estimated 1RM via Epley formula)
+    if (data.weightKg && data.reps && data.completed) {
+      const estimated1rm = data.reps === 1 ? data.weightKg : data.weightKg * (1 + data.reps / 30);
+
+      const existing = await db.query.personalRecords.findFirst({
+        where: and(
+          eq(personalRecords.userId, userId),
+          eq(personalRecords.exerciseId, entry.exerciseId),
+          eq(personalRecords.type, "estimated_1rm"),
+        ),
       });
 
-      if (!entry || entry.workoutSession.userId !== userId) {
-        return c.json({ error: "Not found" }, 404);
+      if (!existing || existing.value < estimated1rm) {
+        await db
+          .insert(personalRecords)
+          .values({
+            userId,
+            exerciseId: entry.exerciseId,
+            type: "estimated_1rm",
+            value: Math.round(estimated1rm * 10) / 10,
+            workoutSessionId: id,
+            previousValue: existing?.value ?? null,
+            achievedAt: new Date(),
+          })
+          .onConflictDoNothing();
       }
-
-      const [set] = await db
-        .insert(exerciseSets)
-        .values({
-          exerciseEntryId: entryId,
-          ...data,
-        })
-        .returning();
-
-      // Check for personal record (estimated 1RM via Epley formula)
-      if (data.weightKg && data.reps && data.completed) {
-        const estimated1rm =
-          data.reps === 1
-            ? data.weightKg
-            : data.weightKg * (1 + data.reps / 30);
-
-        const existing = await db.query.personalRecords.findFirst({
-          where: and(
-            eq(personalRecords.userId, userId),
-            eq(personalRecords.exerciseId, entry.exerciseId),
-            eq(personalRecords.type, "estimated_1rm")
-          ),
-        });
-
-        if (!existing || existing.value < estimated1rm) {
-          await db
-            .insert(personalRecords)
-            .values({
-              userId,
-              exerciseId: entry.exerciseId,
-              type: "estimated_1rm",
-              value: Math.round(estimated1rm * 10) / 10,
-              workoutSessionId: id,
-              previousValue: existing?.value ?? null,
-              achievedAt: new Date(),
-            })
-            .onConflictDoNothing();
-        }
-      }
-
-      return c.json(set, 201);
     }
-  )
+
+    return c.json(set, 201);
+  })
 
   // Update a set
   .patch(
@@ -346,11 +311,11 @@ export const sessionRoutes = new Hono()
 
       const [updated] = await db
         .update(exerciseSets)
-        .set({ ...data, updatedAt: new Date() } as any)
+        .set({ ...data })
         .where(eq(exerciseSets.id, setId))
         .returning();
 
       if (!updated) return c.json({ error: "Set not found" }, 404);
       return c.json(updated);
-    }
+    },
   );

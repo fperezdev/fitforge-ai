@@ -42,8 +42,6 @@ interface Message {
   createdAt: string;
 }
 
-
-
 // ─── Plan helpers ─────────────────────────────────────────────────────────────
 
 function extractPlan(content: string): object | null {
@@ -148,9 +146,7 @@ interface FullPlan {
 }
 
 function formatPlanAsText(p: FullPlan): string {
-  const lines: string[] = [
-    `[Current Training Plan: "${p.name}" — ${p.status}]`,
-  ];
+  const lines: string[] = [`[Current Training Plan: "${p.name}" — ${p.status}]`];
   for (const mc of p.microcycles) {
     for (const day of mc.days) {
       const prefix = `Week ${mc.position}, Day ${day.dayNumber}`;
@@ -251,9 +247,7 @@ function PlanDisplay({ plan }: { plan: WorkoutPlan }) {
       </div>
       {plan.weeks.map((week) => (
         <div key={week.week}>
-          <p className="font-medium text-xs uppercase tracking-wide mb-1">
-            Week {week.week}
-          </p>
+          <p className="font-medium text-xs uppercase tracking-wide mb-1">Week {week.week}</p>
           {week.days.map((day, di) => (
             <div key={di} className="mb-2">
               <p className="font-medium">Day {day.day}</p>
@@ -309,7 +303,7 @@ function MessageBubble({
       <div
         className={cn(
           "h-7 w-7 rounded-full flex items-center justify-center shrink-0 mt-0.5",
-          isUser ? "bg-primary text-primary-foreground" : "bg-muted"
+          isUser ? "bg-primary text-primary-foreground" : "bg-muted",
         )}
         aria-hidden
       >
@@ -318,9 +312,7 @@ function MessageBubble({
       <div
         className={cn(
           "max-w-[80%] rounded-2xl px-4 py-2.5 text-sm",
-          isUser
-            ? "bg-primary text-primary-foreground rounded-tr-sm"
-            : "bg-muted rounded-tl-sm"
+          isUser ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-muted rounded-tl-sm",
         )}
       >
         <p className="whitespace-pre-wrap">{displayContent}</p>
@@ -335,22 +327,14 @@ function MessageBubble({
           </button>
         )}
         {plan && !canImportPlan && (
-          <p className="mt-3 text-xs text-muted-foreground">
-            You already have a training plan.
-          </p>
+          <p className="mt-3 text-xs text-muted-foreground">You already have a training plan.</p>
         )}
       </div>
     </div>
   );
 }
 
-function FailedMessageBubble({
-  content,
-  onRetry,
-}: {
-  content: string;
-  onRetry: () => void;
-}) {
+function FailedMessageBubble({ content, onRetry }: { content: string; onRetry: () => void }) {
   return (
     <div className="flex gap-3">
       <div
@@ -417,7 +401,7 @@ const FIELD_PROMPTS: Record<GateField, string> = {
 function isMissingField(
   field: GateField,
   profile: UserProfile | undefined,
-  hasWeight: boolean
+  hasWeight: boolean,
 ): boolean {
   if (!profile) return true;
   if (field === "weight") return !hasWeight;
@@ -438,15 +422,12 @@ function ProfileGate({
   const [inputValue, setInputValue] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const missingFields = GATE_FIELDS.filter((f) =>
-    isMissingField(f, profile, hasWeight)
-  );
+  const missingFields = GATE_FIELDS.filter((f) => isMissingField(f, profile, hasWeight));
   const currentField = missingFields[0] ?? null;
   const doneCount = GATE_FIELDS.length - missingFields.length;
 
   const profileMutation = useMutation({
-    mutationFn: (data: Partial<UserProfile>) =>
-      api.patch<UserProfile>("/me/profile", data),
+    mutationFn: (data: Partial<UserProfile>) => api.patch<UserProfile>("/me/profile", data),
     onSuccess: (updated) => {
       queryClient.setQueryData(["me/profile"], updated);
       setInputValue("");
@@ -507,7 +488,10 @@ function ProfileGate({
     profileMutation.mutate({ [currentField]: val });
   }
 
-  const isSelect = currentField === "fitnessGoal" || currentField === "experienceLevel" || currentField === "gender";
+  const isSelect =
+    currentField === "fitnessGoal" ||
+    currentField === "experienceLevel" ||
+    currentField === "gender";
 
   const selectOptions: Record<string, { value: string; label: string }[]> = {
     gender: [
@@ -550,9 +534,7 @@ function ProfileGate({
           <span className="text-xs text-muted-foreground">
             {doneCount} of {GATE_FIELDS.length} complete
           </span>
-          <span className="text-xs text-muted-foreground">
-            {missingFields.length} remaining
-          </span>
+          <span className="text-xs text-muted-foreground">{missingFields.length} remaining</span>
         </div>
         <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
           <div
@@ -602,10 +584,10 @@ function ProfileGate({
                 currentField === "heightCm"
                   ? "e.g. 175"
                   : currentField === "weight"
-                  ? "e.g. 75"
-                  : currentField === "displayName"
-                  ? "e.g. Alex"
-                  : ""
+                    ? "e.g. 75"
+                    : currentField === "displayName"
+                      ? "e.g. Alex"
+                      : ""
               }
               className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               aria-label={FIELD_LABELS[currentField]}
@@ -615,7 +597,12 @@ function ProfileGate({
 
           {error && <p className="text-xs text-destructive text-left">{error}</p>}
 
-          <Button type="submit" className="w-full" loading={isPending} disabled={!inputValue.trim()}>
+          <Button
+            type="submit"
+            className="w-full"
+            loading={isPending}
+            disabled={!inputValue.trim()}
+          >
             Continue
           </Button>
         </form>
@@ -626,11 +613,7 @@ function ProfileGate({
 
 // ─── Mode Selector ────────────────────────────────────────────────────────────
 
-function ModeSelector({
-  onSelect,
-}: {
-  onSelect: (mode: "advice" | "plan") => void;
-}) {
+function ModeSelector({ onSelect }: { onSelect: (mode: "advice" | "plan") => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-6 p-8 text-center">
       <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
@@ -762,7 +745,7 @@ function PlanFlow({
             key={s}
             className={cn(
               "h-2 w-2 rounded-full transition-colors",
-              s <= step ? "bg-primary" : "bg-muted"
+              s <= step ? "bg-primary" : "bg-muted",
             )}
           />
         ))}
@@ -809,7 +792,7 @@ function PlanFlow({
                     "flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-colors text-left",
                     planType === opt.value
                       ? "border-primary bg-primary/5 text-primary"
-                      : "border-border hover:border-primary/50 hover:bg-muted/50"
+                      : "border-border hover:border-primary/50 hover:bg-muted/50",
                   )}
                 >
                   {opt.icon}
@@ -821,12 +804,7 @@ function PlanFlow({
               ))}
             </div>
             <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={() => setStep(1)}
-              >
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setStep(1)}>
                 Back
               </Button>
               <Button type="submit" className="flex-1" disabled={!planType}>
@@ -853,12 +831,7 @@ function PlanFlow({
               aria-label="Additional context"
             />
             <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="flex-1"
-                onClick={() => setStep(2)}
-              >
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setStep(2)}>
                 Back
               </Button>
               <Button type="submit" className="flex-1" loading={isLoading}>
@@ -986,8 +959,10 @@ export function CoachPage() {
     const isRetry = content !== undefined && convId === undefined;
     const userText = content ?? inputValue.trim();
     const msg = userText
-      ? includedPlanText ? `${userText}\n\n${includedPlanText}` : userText
-      : includedPlanText ?? "";
+      ? includedPlanText
+        ? `${userText}\n\n${includedPlanText}`
+        : userText
+      : (includedPlanText ?? "");
     if (!msg) return;
 
     if (!isRetry && convId === undefined) {
@@ -999,10 +974,7 @@ export function CoachPage() {
     setIsStreaming(true);
 
     if (isRetry) {
-      queryClient.setQueryData<Message[]>(
-        ["messages", targetConv],
-        lastServerMessagesRef.current
-      );
+      queryClient.setQueryData<Message[]>(["messages", targetConv], lastServerMessagesRef.current);
     } else {
       queryClient.setQueryData<Message[]>(["messages", targetConv], (prev) => [
         ...(prev ?? []),
@@ -1033,7 +1005,7 @@ export function CoachPage() {
           convId: targetConv,
           content: err.message || "Failed to get a response. Please try again.",
         });
-      }
+      },
     );
   }
 
@@ -1060,8 +1032,8 @@ export function CoachPage() {
       planType === "hypertrophy"
         ? "Hypertrophy only"
         : planType === "cardio"
-        ? "Cardio only"
-        : "Both (Hypertrophy + Cardio)";
+          ? "Cardio only"
+          : "Both (Hypertrophy + Cardio)";
 
     const firstMessage = [
       `Plan type: ${planTypeLabel}`,
@@ -1136,13 +1108,15 @@ export function CoachPage() {
       )}
 
       {/* Sidebar */}
-      <aside className={cn(
-        "flex flex-col w-64 shrink-0 border border-border rounded-xl bg-card overflow-hidden",
-        "md:flex",
-        mobileSidebarOpen
-          ? "fixed inset-y-0 left-0 z-50 rounded-none border-r border-l-0 border-y-0 shadow-xl"
-          : "hidden"
-      )}>
+      <aside
+        className={cn(
+          "flex flex-col w-64 shrink-0 border border-border rounded-xl bg-card overflow-hidden",
+          "md:flex",
+          mobileSidebarOpen
+            ? "fixed inset-y-0 left-0 z-50 rounded-none border-r border-l-0 border-y-0 shadow-xl"
+            : "hidden",
+        )}
+      >
         <div className="p-3 border-b border-border">
           <Button
             size="sm"
@@ -1160,19 +1134,18 @@ export function CoachPage() {
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {conversations.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center p-4">
-              No conversations yet
-            </p>
+            <p className="text-xs text-muted-foreground text-center p-4">No conversations yet</p>
           )}
           {conversations.map((conv) => (
             <button
               key={conv.id}
-              onClick={() => { setActiveConv(conv.id); setMobileSidebarOpen(false); }}
+              onClick={() => {
+                setActiveConv(conv.id);
+                setMobileSidebarOpen(false);
+              }}
               className={cn(
                 "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
-                activeConv === conv.id
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-accent"
+                activeConv === conv.id ? "bg-primary text-primary-foreground" : "hover:bg-accent",
               )}
             >
               <div className="flex items-center gap-1.5 min-w-0">
@@ -1182,7 +1155,7 @@ export function CoachPage() {
                       "h-3 w-3 shrink-0",
                       activeConv === conv.id
                         ? "text-primary-foreground/70"
-                        : "text-muted-foreground"
+                        : "text-muted-foreground",
                     )}
                     aria-label="Closed"
                   />
@@ -1192,9 +1165,7 @@ export function CoachPage() {
               <p
                 className={cn(
                   "text-xs truncate mt-0.5",
-                  activeConv === conv.id
-                    ? "text-primary-foreground/70"
-                    : "text-muted-foreground"
+                  activeConv === conv.id ? "text-primary-foreground/70" : "text-muted-foreground",
                 )}
               >
                 {new Date(conv.updatedAt).toLocaleDateString()}
@@ -1248,9 +1219,7 @@ export function CoachPage() {
                     {(() => {
                       const planStart = streamingMsg.indexOf("<plan>");
                       const visibleText =
-                        planStart === -1
-                          ? streamingMsg
-                          : streamingMsg.slice(0, planStart).trim();
+                        planStart === -1 ? streamingMsg : streamingMsg.slice(0, planStart).trim();
                       const buildingPlan = planStart !== -1;
                       return (
                         <>
@@ -1278,7 +1247,8 @@ export function CoachPage() {
             <div className="p-3 border-t border-border">
               {isClosed ? (
                 <div className="flex items-center justify-center gap-2 h-10 rounded-lg bg-muted px-4 text-sm text-muted-foreground">
-                  Your training plan is active. Start a new Plan Making conversation to refine another.
+                  Your training plan is active. Start a new Plan Making conversation to refine
+                  another.
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
@@ -1316,7 +1286,7 @@ export function CoachPage() {
                       className="flex-1 h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
                       aria-label="Message input"
                     />
-                     <Button
+                    <Button
                       type="submit"
                       size="icon"
                       disabled={(!inputValue.trim() && !planIsIncluded) || isStreaming}
@@ -1340,9 +1310,7 @@ export function CoachPage() {
             {funnelStep === "advice" && (
               <AdviceFlow onStart={startAdvice} isLoading={isCreatingConv} />
             )}
-            {funnelStep === "plan" && (
-              <PlanFlow onStart={startPlan} isLoading={isCreatingConv} />
-            )}
+            {funnelStep === "plan" && <PlanFlow onStart={startPlan} isLoading={isCreatingConv} />}
           </>
         )}
       </div>
@@ -1354,8 +1322,8 @@ export function CoachPage() {
         title="Import as Training Plan"
       >
         <p className="text-sm text-muted-foreground mb-4">
-          The AI generated a structured plan. Save it as a Training Plan to
-          review and assign workouts day by day.
+          The AI generated a structured plan. Save it as a Training Plan to review and assign
+          workouts day by day.
         </p>
         {planToSave && (
           <div className="bg-muted rounded-lg p-3 overflow-auto max-h-48 mb-4">

@@ -19,7 +19,7 @@ const createTemplateSchema = z.object({
         targetRepMax: z.number().int().min(1),
         rir: z.number().int().min(0).optional().nullable(),
         restSeconds: z.number().int().optional().nullable(),
-      })
+      }),
     )
     .optional()
     .default([]),
@@ -52,10 +52,7 @@ export const templateRoutes = new Hono()
     const db = getDb();
 
     const template = await db.query.workoutTemplates.findFirst({
-      where: and(
-        eq(workoutTemplates.id, id),
-        eq(workoutTemplates.userId, userId)
-      ),
+      where: and(eq(workoutTemplates.id, id), eq(workoutTemplates.userId, userId)),
       with: {
         templateExercises: {
           with: { exercise: true },
@@ -96,22 +93,16 @@ export const templateRoutes = new Hono()
     const [updated] = await db
       .update(workoutTemplates)
       .set({ ...data, updatedAt: new Date() })
-      .where(
-        and(eq(workoutTemplates.id, id), eq(workoutTemplates.userId, userId))
-      )
+      .where(and(eq(workoutTemplates.id, id), eq(workoutTemplates.userId, userId)))
       .returning();
 
     if (!updated) return c.json({ error: "Template not found" }, 404);
 
     // Replace exercises
-    await db
-      .delete(templateExercises)
-      .where(eq(templateExercises.workoutTemplateId, id));
+    await db.delete(templateExercises).where(eq(templateExercises.workoutTemplateId, id));
 
     if (exs.length > 0) {
-      await db
-        .insert(templateExercises)
-        .values(exs.map((e) => ({ ...e, workoutTemplateId: id })));
+      await db.insert(templateExercises).values(exs.map((e) => ({ ...e, workoutTemplateId: id })));
     }
 
     return c.json(updated);
@@ -124,9 +115,7 @@ export const templateRoutes = new Hono()
 
     await db
       .delete(workoutTemplates)
-      .where(
-        and(eq(workoutTemplates.id, id), eq(workoutTemplates.userId, userId))
-      );
+      .where(and(eq(workoutTemplates.id, id), eq(workoutTemplates.userId, userId)));
 
     return c.json({ success: true });
   });

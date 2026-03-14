@@ -51,7 +51,9 @@ export const authUsers = authSchema.table("users", {
 // ─── User Profiles ──────────────────────────────────────────────────────────
 
 export const userProfiles = pgTable("user_profiles", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" })
@@ -60,51 +62,48 @@ export const userProfiles = pgTable("user_profiles", {
   dateOfBirth: date("date_of_birth"),
   gender: varchar("gender", { length: 50 }),
   heightCm: numeric("height_cm").$type<number>(),
-  unitPreference: varchar("unit_preference", { length: 10 })
-    .notNull()
-    .default("metric"),
+  unitPreference: varchar("unit_preference", { length: 10 }).notNull().default("metric"),
   fitnessGoal: varchar("fitness_goal", { length: 100 }),
   experienceLevel: varchar("experience_level", { length: 50 }),
   injuries: text("injuries"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─── Exercises ───────────────────────────────────────────────────────────────
 
 export const exercises = pgTable("exercises", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   name: varchar("name", { length: 255 }).notNull(),
   primaryMuscle: muscleEnum("primary_muscle").notNull().default("other"),
-  secondaryMuscles: muscleEnum("secondary_muscles").array().notNull().default(sql`'{}'::muscle[]`),
-  createdAt: timestamp("created_at", { withTimezone: true })
+  secondaryMuscles: muscleEnum("secondary_muscles")
+    .array()
     .notNull()
-    .defaultNow(),
+    .default(sql`'{}'::muscle[]`),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─── Workout Templates ────────────────────────────────────────────────────────
 
 export const workoutTemplates = pgTable("workout_templates", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const templateExercises = pgTable("template_exercises", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workoutTemplateId: uuid("workout_template_id")
     .notNull()
     .references(() => workoutTemplates.id, { onDelete: "cascade" }),
@@ -122,7 +121,9 @@ export const templateExercises = pgTable("template_exercises", {
 // ─── Workout Sessions ─────────────────────────────────────────────────────────
 
 export const workoutSessions = pgTable("workout_sessions", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -135,16 +136,14 @@ export const workoutSessions = pgTable("workout_sessions", {
   planDayId: uuid("plan_day_id"),
   weekIndex: integer("week_index"),
   dayIndex: integer("day_index"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const exerciseEntries = pgTable("exercise_entries", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workoutSessionId: uuid("workout_session_id")
     .notNull()
     .references(() => workoutSessions.id, { onDelete: "cascade" }),
@@ -156,13 +155,13 @@ export const exerciseEntries = pgTable("exercise_entries", {
   targetRepMax: integer("target_rep_max"),
   targetRir: integer("target_rir"),
   restSeconds: integer("rest_seconds"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const exerciseSets = pgTable("exercise_sets", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   exerciseEntryId: uuid("exercise_entry_id")
     .notNull()
     .references(() => exerciseEntries.id, { onDelete: "cascade" }),
@@ -174,15 +173,15 @@ export const exerciseSets = pgTable("exercise_sets", {
   durationSeconds: integer("duration_seconds"),
   restSeconds: integer("rest_seconds"),
   completed: boolean("completed").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─── Personal Records ─────────────────────────────────────────────────────────
 
 export const personalRecords = pgTable("personal_records", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -196,15 +195,15 @@ export const personalRecords = pgTable("personal_records", {
     .references(() => workoutSessions.id, { onDelete: "cascade" }),
   previousValue: numeric("previous_value").$type<number>(),
   achievedAt: timestamp("achieved_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─── Cardio ───────────────────────────────────────────────────────────────────
 
 export const cardioSessions = pgTable("cardio_sessions", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -224,16 +223,14 @@ export const cardioSessions = pgTable("cardio_sessions", {
   planDayId: uuid("plan_day_id"),
   weekIndex: integer("week_index"),
   dayIndex: integer("day_index"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const cardioSplits = pgTable("cardio_splits", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   cardioSessionId: uuid("cardio_session_id")
     .notNull()
     .references(() => cardioSessions.id, { onDelete: "cascade" }),
@@ -245,20 +242,22 @@ export const cardioSplits = pgTable("cardio_splits", {
 // ─── Body Tracking ────────────────────────────────────────────────────────────
 
 export const weightEntries = pgTable("weight_entries", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
   date: date("date").notNull(),
   weightKg: numeric("weight_kg").$type<number>().notNull(),
   notes: text("notes"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const bodyMeasurements = pgTable("body_measurements", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -276,32 +275,29 @@ export const bodyMeasurements = pgTable("body_measurements", {
   shouldersCm: numeric("shoulders_cm").$type<number>(),
   neckCm: numeric("neck_cm").$type<number>(),
   notes: text("notes"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
-
 
 // ─── AI Coach ─────────────────────────────────────────────────────────────────
 
 export const coachConversations = pgTable("coach_conversations", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
   title: varchar("title", { length: 255 }),
   mode: varchar("mode", { length: 20 }), // 'advice' | 'plan'
   status: varchar("status", { length: 20 }).notNull().default("active"), // 'active' | 'closed'
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const coachRequests = pgTable("coach_requests", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -312,48 +308,45 @@ export const coachRequests = pgTable("coach_requests", {
   status: varchar("status", { length: 50 }).notNull(), // 'pending' | 'processing' | 'completed' | 'failed'
   response: text("response"),
   error: text("error"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   startedAt: timestamp("started_at", { withTimezone: true }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 });
 
 export const coachMessages = pgTable("coach_messages", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   conversationId: uuid("conversation_id")
     .notNull()
     .references(() => coachConversations.id, { onDelete: "cascade" }),
-  coachRequestId: uuid("coach_request_id").references(
-    () => coachRequests.id,
-    { onDelete: "set null" }
-  ),
+  coachRequestId: uuid("coach_request_id").references(() => coachRequests.id, {
+    onDelete: "set null",
+  }),
   role: varchar("role", { length: 20 }).notNull(), // 'user' | 'assistant'
   content: text("content").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─── Cardio Templates ─────────────────────────────────────────────────────────
 
 export const cardioTemplates = pgTable("cardio_templates", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const cardioTemplateExercises = pgTable("cardio_template_exercises", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   cardioTemplateId: uuid("cardio_template_id")
     .notNull()
     .references(() => cardioTemplates.id, { onDelete: "cascade" }),
@@ -361,9 +354,7 @@ export const cardioTemplateExercises = pgTable("cardio_template_exercises", {
   zone: integer("zone"),
   kilometers: numeric("kilometers").$type<number>(),
   order: integer("order").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─── Training Plans ───────────────────────────────────────────────────────────
@@ -371,7 +362,9 @@ export const cardioTemplateExercises = pgTable("cardio_template_exercises", {
 export const trainingPlans = pgTable(
   "training_plans",
   {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -382,48 +375,44 @@ export const trainingPlans = pgTable(
     mesocycleLength: integer("mesocycle_length").notNull().default(4),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     startDate: date("start_date"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     // At most one non-completed plan per user (draft or active)
     activeUnique: uniqueIndex("training_plans_user_id_active_unique")
       .on(t.userId)
       .where(ne(t.status, "completed")),
-  })
+  }),
 );
 
 export const planMicrocycles = pgTable("plan_microcycles", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   trainingPlanId: uuid("training_plan_id")
     .notNull()
     .references(() => trainingPlans.id, { onDelete: "cascade" }),
   position: integer("position").notNull(), // 1-based index
   name: varchar("name", { length: 255 }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const planDays = pgTable("plan_days", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   planMicrocycleId: uuid("plan_microcycle_id")
     .notNull()
     .references(() => planMicrocycles.id, { onDelete: "cascade" }),
   dayNumber: integer("day_number").notNull(), // 1-based, within microcycle
   type: varchar("type", { length: 50 }).notNull().default("training"), // 'training' | 'rest'
-  workoutTemplateId: uuid("workout_template_id").references(
-    () => workoutTemplates.id,
-    { onDelete: "set null" }
-  ),
-  cardioTemplateId: uuid("cardio_template_id").references(
-    () => cardioTemplates.id,
-    { onDelete: "set null" }
-  ),
+  workoutTemplateId: uuid("workout_template_id").references(() => workoutTemplates.id, {
+    onDelete: "set null",
+  }),
+  cardioTemplateId: uuid("cardio_template_id").references(() => cardioTemplates.id, {
+    onDelete: "set null",
+  }),
   notes: text("notes"),
 });
 
@@ -431,7 +420,9 @@ export const planDays = pgTable("plan_days", {
 // One row per plan-day occurrence (calendar slot). Tracks completed / skipped.
 
 export const planDayLogs = pgTable("plan_day_logs", {
-  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: uuid("user_id")
     .notNull()
     .references(() => authUsers.id, { onDelete: "cascade" }),
@@ -441,67 +432,54 @@ export const planDayLogs = pgTable("plan_day_logs", {
   planDayId: uuid("plan_day_id")
     .notNull()
     .references(() => planDays.id, { onDelete: "cascade" }),
-  weekIndex: integer("week_index").notNull(),  // 0-based microcycle occurrence
-  dayIndex: integer("day_index").notNull(),    // 0-based day within microcycle
+  weekIndex: integer("week_index").notNull(), // 0-based microcycle occurrence
+  dayIndex: integer("day_index").notNull(), // 0-based day within microcycle
   // 'completed' | 'skipped'                  — full-day log (legacy / rest days)
   // 'workout_completed' | 'workout_skipped'  — strength component only
   // 'cardio_completed'  | 'cardio_skipped'   — cardio component only
   status: varchar("status", { length: 50 }).notNull(),
-  workoutSessionId: uuid("workout_session_id").references(
-    () => workoutSessions.id,
-    { onDelete: "set null" }
-  ),
+  workoutSessionId: uuid("workout_session_id").references(() => workoutSessions.id, {
+    onDelete: "set null",
+  }),
   notes: text("notes"),
   loggedAt: timestamp("logged_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 
-export const workoutTemplatesRelations = relations(
-  workoutTemplates,
-  ({ many }) => ({
-    templateExercises: many(templateExercises),
-    planDaysStrength: many(planDays, { relationName: "strengthTemplate" }),
-  })
-);
+export const workoutTemplatesRelations = relations(workoutTemplates, ({ many }) => ({
+  templateExercises: many(templateExercises),
+  planDaysStrength: many(planDays, { relationName: "strengthTemplate" }),
+}));
 
-export const templateExercisesRelations = relations(
-  templateExercises,
-  ({ one }) => ({
-    workoutTemplate: one(workoutTemplates, {
-      fields: [templateExercises.workoutTemplateId],
-      references: [workoutTemplates.id],
-    }),
-    exercise: one(exercises, {
-      fields: [templateExercises.exerciseId],
-      references: [exercises.id],
-    }),
-  })
-);
+export const templateExercisesRelations = relations(templateExercises, ({ one }) => ({
+  workoutTemplate: one(workoutTemplates, {
+    fields: [templateExercises.workoutTemplateId],
+    references: [workoutTemplates.id],
+  }),
+  exercise: one(exercises, {
+    fields: [templateExercises.exerciseId],
+    references: [exercises.id],
+  }),
+}));
 
-export const workoutSessionsRelations = relations(
-  workoutSessions,
-  ({ many }) => ({
-    exerciseEntries: many(exerciseEntries),
-    personalRecords: many(personalRecords),
-    planDayLogs: many(planDayLogs),
-  })
-);
+export const workoutSessionsRelations = relations(workoutSessions, ({ many }) => ({
+  exerciseEntries: many(exerciseEntries),
+  personalRecords: many(personalRecords),
+  planDayLogs: many(planDayLogs),
+}));
 
-export const exerciseEntriesRelations = relations(
-  exerciseEntries,
-  ({ one, many }) => ({
-    workoutSession: one(workoutSessions, {
-      fields: [exerciseEntries.workoutSessionId],
-      references: [workoutSessions.id],
-    }),
-    exercise: one(exercises, {
-      fields: [exerciseEntries.exerciseId],
-      references: [exercises.id],
-    }),
-    sets: many(exerciseSets),
-  })
-);
+export const exerciseEntriesRelations = relations(exerciseEntries, ({ one, many }) => ({
+  workoutSession: one(workoutSessions, {
+    fields: [exerciseEntries.workoutSessionId],
+    references: [workoutSessions.id],
+  }),
+  exercise: one(exercises, {
+    fields: [exerciseEntries.exerciseId],
+    references: [exercises.id],
+  }),
+  sets: many(exerciseSets),
+}));
 
 export const exerciseSetsRelations = relations(exerciseSets, ({ one }) => ({
   exerciseEntry: one(exerciseEntries, {
@@ -510,26 +488,20 @@ export const exerciseSetsRelations = relations(exerciseSets, ({ one }) => ({
   }),
 }));
 
-export const personalRecordsRelations = relations(
-  personalRecords,
-  ({ one }) => ({
-    exercise: one(exercises, {
-      fields: [personalRecords.exerciseId],
-      references: [exercises.id],
-    }),
-    workoutSession: one(workoutSessions, {
-      fields: [personalRecords.workoutSessionId],
-      references: [workoutSessions.id],
-    }),
-  })
-);
+export const personalRecordsRelations = relations(personalRecords, ({ one }) => ({
+  exercise: one(exercises, {
+    fields: [personalRecords.exerciseId],
+    references: [exercises.id],
+  }),
+  workoutSession: one(workoutSessions, {
+    fields: [personalRecords.workoutSessionId],
+    references: [workoutSessions.id],
+  }),
+}));
 
-export const cardioSessionsRelations = relations(
-  cardioSessions,
-  ({ many }) => ({
-    splits: many(cardioSplits),
-  })
-);
+export const cardioSessionsRelations = relations(cardioSessions, ({ many }) => ({
+  splits: many(cardioSplits),
+}));
 
 export const cardioSplitsRelations = relations(cardioSplits, ({ one }) => ({
   cardioSession: one(cardioSessions, {
@@ -538,23 +510,17 @@ export const cardioSplitsRelations = relations(cardioSplits, ({ one }) => ({
   }),
 }));
 
-export const coachConversationsRelations = relations(
-  coachConversations,
-  ({ many }) => ({
-    messages: many(coachMessages),
-    requests: many(coachRequests),
-  })
-);
+export const coachConversationsRelations = relations(coachConversations, ({ many }) => ({
+  messages: many(coachMessages),
+  requests: many(coachRequests),
+}));
 
-export const coachRequestsRelations = relations(
-  coachRequests,
-  ({ one }) => ({
-    conversation: one(coachConversations, {
-      fields: [coachRequests.conversationId],
-      references: [coachConversations.id],
-    }),
-  })
-);
+export const coachRequestsRelations = relations(coachRequests, ({ one }) => ({
+  conversation: one(coachConversations, {
+    fields: [coachRequests.conversationId],
+    references: [coachConversations.id],
+  }),
+}));
 
 export const coachMessagesRelations = relations(coachMessages, ({ one }) => ({
   conversation: one(coachConversations, {
@@ -567,38 +533,29 @@ export const coachMessagesRelations = relations(coachMessages, ({ one }) => ({
   }),
 }));
 
-export const cardioTemplatesRelations = relations(
-  cardioTemplates,
-  ({ many }) => ({
-    cardioTemplateExercises: many(cardioTemplateExercises),
-    planDays: many(planDays),
-  })
-);
+export const cardioTemplatesRelations = relations(cardioTemplates, ({ many }) => ({
+  cardioTemplateExercises: many(cardioTemplateExercises),
+  planDays: many(planDays),
+}));
 
-export const cardioTemplateExercisesRelations = relations(
-  cardioTemplateExercises,
-  ({ one }) => ({
-    cardioTemplate: one(cardioTemplates, {
-      fields: [cardioTemplateExercises.cardioTemplateId],
-      references: [cardioTemplates.id],
-    }),
-  })
-);
+export const cardioTemplateExercisesRelations = relations(cardioTemplateExercises, ({ one }) => ({
+  cardioTemplate: one(cardioTemplates, {
+    fields: [cardioTemplateExercises.cardioTemplateId],
+    references: [cardioTemplates.id],
+  }),
+}));
 
 export const trainingPlansRelations = relations(trainingPlans, ({ many }) => ({
   microcycles: many(planMicrocycles),
 }));
 
-export const planMicrocyclesRelations = relations(
-  planMicrocycles,
-  ({ one, many }) => ({
-    trainingPlan: one(trainingPlans, {
-      fields: [planMicrocycles.trainingPlanId],
-      references: [trainingPlans.id],
-    }),
-    days: many(planDays),
-  })
-);
+export const planMicrocyclesRelations = relations(planMicrocycles, ({ one, many }) => ({
+  trainingPlan: one(trainingPlans, {
+    fields: [planMicrocycles.trainingPlanId],
+    references: [trainingPlans.id],
+  }),
+  days: many(planDays),
+}));
 
 export const planDaysRelations = relations(planDays, ({ one }) => ({
   microcycle: one(planMicrocycles, {

@@ -8,12 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDistance, formatDuration, formatPace } from "@/lib/utils";
 
-
 export function CardioDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const { data: session, isLoading, isError } = useQuery<CardioSession>({
+  const {
+    data: session,
+    isLoading,
+    isError,
+  } = useQuery<CardioSession>({
     queryKey: ["cardio", id],
     queryFn: () => api.get(`/cardio/${id}`),
   });
@@ -73,7 +76,12 @@ export function CardioDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Button variant="ghost" size="sm" onClick={() => navigate("/cardio")} className="-ml-2 mb-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate("/cardio")}
+          className="-ml-2 mb-3"
+        >
           <ArrowLeft className="h-4 w-4" />
           Cardio
         </Button>
@@ -92,7 +100,10 @@ export function CardioDetailPage() {
               })}
             </p>
           </div>
-          <Badge variant={session.status === "completed" ? "success" : "secondary"} className="shrink-0 mt-1">
+          <Badge
+            variant={session.status === "completed" ? "success" : "secondary"}
+            className="shrink-0 mt-1"
+          >
             {session.status}
           </Badge>
         </div>
@@ -104,7 +115,9 @@ export function CardioDetailPage() {
           {statItems.map(({ label, value }) => (
             <Card key={label}>
               <CardContent className="py-4 text-center">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">{label}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                  {label}
+                </p>
                 <p className="text-lg font-bold">{value}</p>
               </CardContent>
             </Card>
@@ -116,7 +129,9 @@ export function CardioDetailPage() {
       {session.notes && (
         <Card>
           <CardContent className="py-4">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Notes</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+              Notes
+            </p>
             <p className="text-sm">{session.notes}</p>
           </CardContent>
         </Card>

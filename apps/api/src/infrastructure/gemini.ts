@@ -14,8 +14,7 @@ function formatContext(ctx: CoachContext): string {
     const p = ctx.profile;
     const age = p.dateOfBirth
       ? Math.floor(
-          (Date.now() - new Date(p.dateOfBirth).getTime()) /
-            (1000 * 60 * 60 * 24 * 365.25)
+          (Date.now() - new Date(p.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365.25),
         )
       : null;
     parts.push(
@@ -27,7 +26,7 @@ function formatContext(ctx: CoachContext): string {
 - Goal: ${p.fitnessGoal ?? "not specified"}
 - Height: ${p.heightCm ? `${p.heightCm} cm` : "unknown"}
 - Units: ${p.unitPreference}
-- Injuries / Limitations: ${p.injuries?.trim() || "none reported"}`
+- Injuries / Limitations: ${p.injuries?.trim() || "none reported"}`,
     );
   }
 
@@ -44,27 +43,26 @@ function formatContext(ctx: CoachContext): string {
     parts.push(
       `## Personal Records (estimated 1RM)\n` +
         ctx.personalRecords
-          .map(
-            (pr) =>
-              `- ${pr.exercise?.name ?? pr.exerciseId}: ${pr.value} kg`
-          )
-          .join("\n")
+          .map((pr) => `- ${pr.exercise?.name ?? pr.exerciseId}: ${pr.value} kg`)
+          .join("\n"),
     );
   }
 
   if (ctx.recentSessions.length > 0) {
     parts.push(`## Recent Workout Sessions (last ${ctx.recentSessions.length})`);
     ctx.recentSessions.forEach((s) => {
-      const date = (s.completedAt ? new Date(s.completedAt).toISOString() : new Date(s.startedAt).toISOString()).split("T")[0];
+      const date = (
+        s.completedAt ? new Date(s.completedAt).toISOString() : new Date(s.startedAt).toISOString()
+      ).split("T")[0];
       const exerciseSummary =
         s.entries
           ?.map((e) => {
-            const workingSets = e.sets?.filter((set) => set.type === "working" && set.completed) ?? [];
+            const workingSets =
+              e.sets?.filter((set) => set.type === "working" && set.completed) ?? [];
             if (workingSets.length === 0) return null;
             const topSet = workingSets.reduce(
-              (best, set) =>
-                (set.weightKg ?? 0) > (best.weightKg ?? 0) ? set : best,
-              workingSets[0]
+              (best, set) => ((set.weightKg ?? 0) > (best.weightKg ?? 0) ? set : best),
+              workingSets[0],
             );
             return `  • ${e.exercise?.name ?? "?"}: ${workingSets.length}×${topSet.reps ?? "?"} @ ${topSet.weightKg ?? "?"}kg`;
           })
@@ -77,10 +75,10 @@ function formatContext(ctx: CoachContext): string {
   if (ctx.recentCardio.length > 0) {
     parts.push(`## Recent Cardio Sessions`);
     ctx.recentCardio.forEach((c) => {
-      const date = (c.completedAt ? new Date(c.completedAt).toISOString() : new Date(c.startedAt).toISOString()).split("T")[0];
-      const dist = c.distanceMeters
-        ? `${(c.distanceMeters / 1000).toFixed(2)} km`
-        : "?";
+      const date = (
+        c.completedAt ? new Date(c.completedAt).toISOString() : new Date(c.startedAt).toISOString()
+      ).split("T")[0];
+      const dist = c.distanceMeters ? `${(c.distanceMeters / 1000).toFixed(2)} km` : "?";
       const pace = c.avgPaceSecondsPerKm
         ? `${Math.floor(c.avgPaceSecondsPerKm / 60)}:${String(c.avgPaceSecondsPerKm % 60).padStart(2, "0")} /km`
         : "?";
@@ -191,9 +189,7 @@ function formatExerciseLibrary(exercises: CoachContext["exercises"]): string {
   const lines = exercises.map(
     (e) =>
       `- ${e.name}: primary=${e.primaryMuscle}` +
-      (e.secondaryMuscles.length > 0
-        ? `, secondary=[${e.secondaryMuscles.join(", ")}]`
-        : "")
+      (e.secondaryMuscles.length > 0 ? `, secondary=[${e.secondaryMuscles.join(", ")}]` : ""),
   );
   return `## Exercise Library\n${lines.join("\n")}`;
 }
@@ -201,7 +197,7 @@ function formatExerciseLibrary(exercises: CoachContext["exercises"]): string {
 export async function streamCoachResponse(
   userMessage: string,
   context: CoachContext,
-  onChunk: (chunk: string) => void
+  onChunk: (chunk: string) => void,
 ): Promise<string> {
   const genAI = getGeminiClient();
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
@@ -210,7 +206,7 @@ export async function streamCoachResponse(
   const history = context.conversationHistory.slice(-10); // keep last 10 for token budget
 
   const modeInstruction = context.conversationMode
-    ? MODE_INSTRUCTIONS[context.conversationMode] ?? ""
+    ? (MODE_INSTRUCTIONS[context.conversationMode] ?? "")
     : "";
 
   const chat = model.startChat({

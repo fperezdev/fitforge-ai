@@ -10,14 +10,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { api } from "@/lib/api";
 import type { WeightEntry } from "@fitforge/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +22,6 @@ interface Stats {
   currentStreak: number;
   lastSession: { name: string; completedAt: string } | null;
 }
-
 
 interface SuggestedDay {
   planDayId: string;
@@ -85,7 +77,9 @@ function ActivePlanCard({ plan }: { plan: ActivePlan }) {
   const weekLabel = day ? `Week ${day.weekIndex + 1} · Day ${day.dayIndex + 1}` : null;
 
   const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
-  const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString("en-CA");
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toLocaleDateString("en-CA");
 
   const scheduledDateLabel = day?.scheduledDate
     ? new Date(day.scheduledDate + "T00:00:00").toLocaleDateString(undefined, {
@@ -98,10 +92,10 @@ function ActivePlanCard({ plan }: { plan: ActivePlan }) {
   const dayLabel = !day?.scheduledDate
     ? "Active plan"
     : day.scheduledDate === todayStr
-    ? "Today's plan"
-    : day.scheduledDate === tomorrowStr
-    ? "Tomorrow's plan"
-    : "Upcoming plan";
+      ? "Today's plan"
+      : day.scheduledDate === tomorrowStr
+        ? "Tomorrow's plan"
+        : "Upcoming plan";
 
   const hasWorkout = isTraining && !!day?.workoutTemplate;
   const hasCardio = isTraining && !!day?.cardioTemplate;
@@ -114,11 +108,7 @@ function ActivePlanCard({ plan }: { plan: ActivePlan }) {
           {/* Plan header */}
           <div className="flex items-start gap-3 min-w-0">
             <div className="h-9 w-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0 mt-0.5">
-              {isRest ? (
-                <BedDouble className="h-4 w-4" />
-              ) : (
-                <ListChecks className="h-4 w-4" />
-              )}
+              {isRest ? <BedDouble className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
@@ -166,8 +156,6 @@ function ActivePlanCard({ plan }: { plan: ActivePlan }) {
           )}
         </CardContent>
       </Card>
-
-
     </>
   );
 }
@@ -241,10 +229,10 @@ export function DashboardPage() {
           label="Last session"
           value={
             stats?.lastSession
-              ? new Date(stats.lastSession.completedAt).toLocaleDateString(
-                  "en-US",
-                  { month: "short", day: "numeric" }
-                )
+              ? new Date(stats.lastSession.completedAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })
               : "—"
           }
           sub={stats?.lastSession?.name || "No sessions yet"}
@@ -260,9 +248,7 @@ export function DashboardPage() {
         <h2 className="font-semibold mb-3">Quick actions</h2>
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" asChild>
-            <Link to="/coach">
-              Ask AI coach
-            </Link>
+            <Link to="/coach">Ask AI coach</Link>
           </Button>
         </div>
       </div>
@@ -273,20 +259,13 @@ export function DashboardPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Weight trend</CardTitle>
-              <Badge variant="secondary">
-                {weightData.length} entries
-              </Badge>
+              <Badge variant="secondary">{weightData.length} entries</Badge>
             </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={weightData}>
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <YAxis
                   domain={["auto", "auto"]}
                   tick={{ fontSize: 11 }}
@@ -332,10 +311,11 @@ export function DashboardPage() {
           <CardContent>
             <p className="font-medium">{stats.lastSession.name}</p>
             <p className="text-sm text-muted-foreground">
-              {new Date(stats.lastSession.completedAt).toLocaleDateString(
-                "en-US",
-                { weekday: "long", month: "long", day: "numeric" }
-              )}
+              {new Date(stats.lastSession.completedAt).toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
             </p>
           </CardContent>
         </Card>

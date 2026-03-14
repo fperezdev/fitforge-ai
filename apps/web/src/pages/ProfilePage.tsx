@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { User, Ruler, Target, Save, ChevronDown, ShieldAlert } from "lucide-react";
@@ -87,7 +87,7 @@ export function ProfilePage() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors, isDirty },
     reset,
   } = useForm<ProfileFormValues>({
@@ -106,7 +106,11 @@ export function ProfilePage() {
       : undefined,
   });
 
-  const unitPref = watch("unitPreference");
+  const unitPref = useWatch({ control, name: "unitPreference" });
+  const watchedDateOfBirth = useWatch({ control, name: "dateOfBirth" });
+  const watchedGender = useWatch({ control, name: "gender" });
+  const watchedFitnessGoal = useWatch({ control, name: "fitnessGoal" });
+  const watchedExperienceLevel = useWatch({ control, name: "experienceLevel" });
 
   const mutation = useMutation({
     mutationFn: (data: ProfileFormValues) =>
@@ -179,7 +183,7 @@ export function ProfilePage() {
 
             <DatePicker
               label="Date of Birth"
-              value={watch("dateOfBirth") ?? ""}
+              value={watchedDateOfBirth ?? ""}
               onChange={(v) => setValue("dateOfBirth", v, { shouldDirty: true })}
               error={errors.dateOfBirth?.message}
               toDate={new Date()}
@@ -188,7 +192,7 @@ export function ProfilePage() {
             <SelectField
               label="Gender"
               id="gender"
-              value={watch("gender") ?? ""}
+              value={watchedGender ?? ""}
               onChange={(v) => setValue("gender", v, { shouldDirty: true })}
               options={[
                 { value: "male", label: "Male" },
@@ -218,9 +222,7 @@ export function ProfilePage() {
             />
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium text-foreground">
-                Unit Preference
-              </span>
+              <span className="text-sm font-medium text-foreground">Unit Preference</span>
               <div className="flex gap-2">
                 {(["metric", "imperial"] as const).map((u) => (
                   <button
@@ -254,7 +256,7 @@ export function ProfilePage() {
             <SelectField
               label="Primary Goal"
               id="fitnessGoal"
-              value={watch("fitnessGoal") ?? ""}
+              value={watchedFitnessGoal ?? ""}
               onChange={(v) => setValue("fitnessGoal", v, { shouldDirty: true })}
               options={[
                 { value: "hypertrophy", label: "Muscle Building" },
@@ -269,7 +271,7 @@ export function ProfilePage() {
             <SelectField
               label="Experience Level"
               id="experienceLevel"
-              value={watch("experienceLevel") ?? ""}
+              value={watchedExperienceLevel ?? ""}
               onChange={(v) => setValue("experienceLevel", v, { shouldDirty: true })}
               options={[
                 { value: "beginner", label: "Beginner (< 1 year)" },
@@ -301,7 +303,8 @@ export function ProfilePage() {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
               />
               <p className="text-xs text-muted-foreground">
-                This information helps the AI coach tailor advice and avoid exercises that may aggravate your condition.
+                This information helps the AI coach tailor advice and avoid exercises that may
+                aggravate your condition.
               </p>
             </div>
           </CardContent>
@@ -310,9 +313,7 @@ export function ProfilePage() {
         {/* Save */}
         <div className="flex items-center justify-between">
           {mutation.isError && (
-            <p className="text-sm text-destructive">
-              {(mutation.error as Error).message}
-            </p>
+            <p className="text-sm text-destructive">{(mutation.error as Error).message}</p>
           )}
           {saved && (
             <Badge variant="success" className="text-sm">

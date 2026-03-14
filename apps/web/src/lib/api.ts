@@ -18,15 +18,12 @@ export function getRefreshToken(): string | null {
   return localStorage.getItem("refresh_token");
 }
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.headers as Record<string, string> ?? {}),
+    ...((options.headers as Record<string, string>) ?? {}),
   };
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
@@ -41,8 +38,7 @@ async function request<T>(
         body: JSON.stringify({ refreshToken }),
       });
       if (refreshRes.ok) {
-        const { accessToken, refreshToken: newRefresh } =
-          await refreshRes.json();
+        const { accessToken, refreshToken: newRefresh } = await refreshRes.json();
         setTokens(accessToken, newRefresh);
         // Retry original request
         return request(path, options);
@@ -60,7 +56,14 @@ async function request<T>(
     const body = await res.json().catch(() => ({ error: res.statusText }));
     const message =
       body.error ??
-      (body.issues ? body.issues.map((i: { message?: string; path?: unknown[] }) => `${i.path?.join(".")}: ${i.message ?? "invalid"}`).join("; ") : null) ??
+      (body.issues
+        ? body.issues
+            .map(
+              (i: { message?: string; path?: unknown[] }) =>
+                `${i.path?.join(".")}: ${i.message ?? "invalid"}`,
+            )
+            .join("; ")
+        : null) ??
       "Request failed";
     throw new Error(message);
   }
@@ -93,7 +96,7 @@ export function streamCoach(
   content: string,
   onChunk: (chunk: string) => void,
   onDone: (messageId: string) => void,
-  onError: (err: Error) => void
+  onError: (err: Error) => void,
 ): AbortController {
   const controller = new AbortController();
   const token = getToken();
@@ -106,39 +109,41 @@ export function streamCoach(
     },
     body: JSON.stringify({ content }),
     signal: controller.signal,
-  }).then(async (res) => {
-    if (!res.ok || !res.body) {
-      onError(new Error("Failed to connect to coach"));
-      return;
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
+  })
+    .then(async (res) => {
+      if (!res.ok || !res.body) {
+        onError(new Error("Failed to connect to coach"));
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      const text = decoder.decode(value);
-      const lines = text.split("\n");
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        try {
-          const data = JSON.parse(line.slice(6));
-          if (data.chunk) onChunk(data.chunk);
-          if (data.done) onDone(data.messageId);
-          if (data.error) {
-            onError(new Error(data.error));
+        const text = decoder.decode(value);
+        const lines = text.split("\n");
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.chunk) onChunk(data.chunk);
+            if (data.done) onDone(data.messageId);
+            if (data.error) {
+              onError(new Error(data.error));
+            }
+          } catch {
+            // ignore malformed lines
           }
-        } catch {
-          // ignore malformed lines
         }
       }
-    }
-  }).catch((err) => {
-    if (err.name !== "AbortError") {
-      onError(err instanceof Error ? err : new Error(err));
-    }
-  });
+    })
+    .catch((err) => {
+      if (err.name !== "AbortError") {
+        onError(err instanceof Error ? err : new Error(err));
+      }
+    });
 
   return controller;
 }

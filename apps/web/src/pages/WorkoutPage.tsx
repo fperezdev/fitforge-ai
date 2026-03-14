@@ -20,18 +20,43 @@ interface Session {
   completedAt: string | null;
 }
 
-
 export function WorkoutPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
 
-  const [confirmModal, setConfirmModal] = useState(false);
-  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
-  const [pendingTemplateName, setPendingTemplateName] = useState<string | null>(null);
-  const [pendingPlanDayId, setPendingPlanDayId] = useState<string | null>(null);
-  const [pendingWeekIndex, setPendingWeekIndex] = useState<number | null>(null);
-  const [pendingDayIndex, setPendingDayIndex] = useState<number | null>(null);
+  // Initialize pending plan-day state from router location.state (if navigated from plan)
+  const routeState = location.state as {
+    templateId?: string;
+    templateName?: string;
+    planDayId?: string;
+    weekIndex?: number;
+    dayIndex?: number;
+  } | null;
+
+  const [confirmModal, setConfirmModal] = useState(() => !!routeState?.planDayId);
+  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(
+    () => routeState?.templateId ?? null,
+  );
+  const [pendingTemplateName, setPendingTemplateName] = useState<string | null>(
+    () => routeState?.templateName ?? null,
+  );
+  const [pendingPlanDayId, setPendingPlanDayId] = useState<string | null>(
+    () => routeState?.planDayId ?? null,
+  );
+  const [pendingWeekIndex, setPendingWeekIndex] = useState<number | null>(
+    () => routeState?.weekIndex ?? null,
+  );
+  const [pendingDayIndex, setPendingDayIndex] = useState<number | null>(
+    () => routeState?.dayIndex ?? null,
+  );
+
+  // Clear router state after reading it so back-navigation doesn't re-trigger
+  useEffect(() => {
+    if ((location.state as typeof routeState)?.planDayId) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery<Session[]>({
     queryKey: ["sessions"],
@@ -42,25 +67,6 @@ export function WorkoutPage() {
     queryKey: ["activePlan"],
     queryFn: () => api.get("/plans/active"),
   });
-
-  useEffect(() => {
-    const state = location.state as {
-      templateId?: string;
-      templateName?: string;
-      planDayId?: string;
-      weekIndex?: number;
-      dayIndex?: number;
-    } | null;
-    if (state?.planDayId) {
-      setPendingTemplateId(state.templateId ?? null);
-      setPendingTemplateName(state.templateName ?? null);
-      setPendingPlanDayId(state.planDayId);
-      setPendingWeekIndex(state.weekIndex ?? null);
-      setPendingDayIndex(state.dayIndex ?? null);
-      setConfirmModal(true);
-      navigate(location.pathname, { replace: true, state: null });
-    }
-  }, []);
 
   const startMutation = useMutation({
     mutationFn: () =>
@@ -117,9 +123,7 @@ export function WorkoutPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Workouts</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {sessions.length} sessions logged
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">{sessions.length} sessions logged</p>
         </div>
       </div>
 
@@ -130,9 +134,7 @@ export function WorkoutPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Active session</p>
-                <p className="text-sm text-muted-foreground">
-                  {activeSession.name ?? "Unnamed"}
-                </p>
+                <p className="text-sm text-muted-foreground">{activeSession.name ?? "Unnamed"}</p>
               </div>
               <Button size="sm" onClick={() => navigate(`/workout/${activeSession.id}`)}>
                 Resume
@@ -154,7 +156,9 @@ export function WorkoutPage() {
                     <CheckCircle2 className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-amber-800 dark:text-amber-200">Workout skipped</p>
+                    <p className="font-medium text-amber-800 dark:text-amber-200">
+                      Workout skipped
+                    </p>
                     <p className="text-sm text-amber-700/70 dark:text-amber-300/70 mt-0.5">
                       Your next planned session is shown below.
                     </p>
@@ -181,7 +185,9 @@ export function WorkoutPage() {
                     <CheckCircle2 className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-emerald-800 dark:text-emerald-200">Workout moved</p>
+                    <p className="font-medium text-emerald-800 dark:text-emerald-200">
+                      Workout moved
+                    </p>
                     <p className="text-sm text-emerald-700/70 dark:text-emerald-300/70 mt-0.5">
                       Your schedule has shifted forward by one day.
                     </p>
@@ -269,21 +275,18 @@ export function WorkoutPage() {
       {/* Session history */}
       <div className="space-y-3">
         {sessions.filter((s) => s.status !== "in_progress").length === 0 && !activeSession && (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No sessions logged yet.
-          </p>
+          <p className="text-sm text-muted-foreground text-center py-4">No sessions logged yet.</p>
         )}
         {sessions
           .filter((s) => s.status !== "in_progress")
           .map((session) => {
-            const duration =
-              session.completedAt
-                ? Math.floor(
-                    (new Date(session.completedAt).getTime() -
-                      new Date(session.startedAt).getTime()) /
-                      1000
-                  )
-                : null;
+            const duration = session.completedAt
+              ? Math.floor(
+                  (new Date(session.completedAt).getTime() -
+                    new Date(session.startedAt).getTime()) /
+                    1000,
+                )
+              : null;
             return (
               <Link key={session.id} to={`/workout/history/${session.id}`}>
                 <Card className="hover:border-primary/40 transition-colors">
@@ -321,8 +324,8 @@ export function WorkoutPage() {
             {pendingTemplateName ? (
               <>
                 This will start a session using the{" "}
-                <span className="font-medium text-foreground">{pendingTemplateName}</span>{" "}
-                template from your active plan.
+                <span className="font-medium text-foreground">{pendingTemplateName}</span> template
+                from your active plan.
               </>
             ) : (
               "This will start a session for today's plan day."
@@ -336,7 +339,9 @@ export function WorkoutPage() {
             </p>
           )}
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" onClick={closeConfirmModal}>Cancel</Button>
+            <Button variant="outline" onClick={closeConfirmModal}>
+              Cancel
+            </Button>
             <Button onClick={() => startMutation.mutate()} loading={startMutation.isPending}>
               <Play className="h-4 w-4" />
               Start
@@ -355,16 +360,20 @@ export function WorkoutPage() {
           isPending={skipDay.isPending}
           isSkipError={skipDay.isSkipError}
           isMoveError={skipDay.isMoveError}
-          onSkip={(notes) => skipDay.skip({
-            weekIndex: nextStrength.weekIndex,
-            dayIndex: nextStrength.dayIndex,
-            component: "workout",
-            notes,
-          })}
-          onMove={() => skipDay.move({
-            weekIndex: nextStrength.weekIndex,
-            dayIndex: nextStrength.dayIndex,
-          })}
+          onSkip={(notes) =>
+            skipDay.skip({
+              weekIndex: nextStrength.weekIndex,
+              dayIndex: nextStrength.dayIndex,
+              component: "workout",
+              notes,
+            })
+          }
+          onMove={() =>
+            skipDay.move({
+              weekIndex: nextStrength.weekIndex,
+              dayIndex: nextStrength.dayIndex,
+            })
+          }
           onClose={skipDay.closeConfirm}
         />
       )}

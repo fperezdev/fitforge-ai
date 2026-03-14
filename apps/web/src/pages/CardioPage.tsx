@@ -17,24 +17,30 @@ import { useSkipDay } from "@/hooks/useSkipDay";
 import { formatDistance, formatDuration, formatPace } from "@/lib/utils";
 import { type ActivePlan, findNextDay, getDateLabel } from "@/lib/planUtils";
 
-
-const nanToUndef = (v: unknown) =>
-  typeof v === "number" && isNaN(v) ? undefined : v;
+const nanToUndef = (v: unknown) => (typeof v === "number" && isNaN(v) ? undefined : v);
 
 const cardioSchema = z.object({
   type: z.enum(["run", "walk", "bike", "swim", "other"]),
-  distanceKm: z.preprocess(nanToUndef, z.number().positive().optional().nullable()) as z.ZodType<number | null | undefined>,
-  durationMin: z.preprocess(nanToUndef, z.number().int().min(0).optional().nullable()) as z.ZodType<number | null | undefined>,
-  durationSec: z.preprocess(nanToUndef, z.number().int().min(0).max(59).optional().nullable()) as z.ZodType<number | null | undefined>,
-  avgHeartRate: z.preprocess(nanToUndef, z.number().int().optional().nullable()) as z.ZodType<number | null | undefined>,
+  distanceKm: z.preprocess(nanToUndef, z.number().positive().optional().nullable()) as z.ZodType<
+    number | null | undefined
+  >,
+  durationMin: z.preprocess(nanToUndef, z.number().int().min(0).optional().nullable()) as z.ZodType<
+    number | null | undefined
+  >,
+  durationSec: z.preprocess(
+    nanToUndef,
+    z.number().int().min(0).max(59).optional().nullable(),
+  ) as z.ZodType<number | null | undefined>,
+  avgHeartRate: z.preprocess(nanToUndef, z.number().int().optional().nullable()) as z.ZodType<
+    number | null | undefined
+  >,
   notes: z.string().optional().nullable(),
 });
 
 type CardioForm = z.infer<typeof cardioSchema>;
 
 function toApiPayload(data: CardioForm) {
-  const distanceMeters =
-    data.distanceKm != null ? Math.round(data.distanceKm * 1000) : null;
+  const distanceMeters = data.distanceKm != null ? Math.round(data.distanceKm * 1000) : null;
   const durationSeconds =
     data.durationMin != null || data.durationSec != null
       ? (data.durationMin ?? 0) * 60 + (data.durationSec ?? 0)
@@ -52,7 +58,6 @@ function toApiPayload(data: CardioForm) {
     notes: data.notes ?? null,
   };
 }
-
 
 export function CardioPage() {
   const queryClient = useQueryClient();
@@ -88,7 +93,9 @@ export function CardioPage() {
     mutationFn: (data: CardioForm) =>
       api.post("/cardio", {
         ...toApiPayload(data),
-        ...(planDayId != null ? { planDayId, weekIndex: planWeekIndex, dayIndex: planDayIndex } : {}),
+        ...(planDayId != null
+          ? { planDayId, weekIndex: planWeekIndex, dayIndex: planDayIndex }
+          : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cardio"] });
@@ -134,9 +141,7 @@ export function CardioPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Cardio</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {sessions.length} sessions
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">{sessions.length} sessions</p>
       </div>
 
       {/* No active plan banner */}
@@ -198,7 +203,9 @@ export function CardioPage() {
                     <CheckCircle2 className="h-4 w-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-emerald-800 dark:text-emerald-200">Cardio moved</p>
+                    <p className="font-medium text-emerald-800 dark:text-emerald-200">
+                      Cardio moved
+                    </p>
                     <p className="text-sm text-emerald-700/70 dark:text-emerald-300/70 mt-0.5">
                       Your schedule has shifted forward by one day.
                     </p>
@@ -292,9 +299,7 @@ export function CardioPage() {
 
       <div className="space-y-3">
         {sessions.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No sessions logged yet.
-          </p>
+          <p className="text-sm text-muted-foreground text-center py-4">No sessions logged yet.</p>
         )}
         {sessions.map((s) => (
           <Link key={s.id} to={`/cardio/${s.id}`}>
@@ -385,18 +390,16 @@ export function CardioPage() {
             type="number"
             {...register("avgHeartRate", { valueAsNumber: true })}
           />
-          <Input
-            label="Notes (optional)"
-            placeholder="How did it feel?"
-            {...register("notes")}
-          />
+          <Input label="Notes (optional)" placeholder="How did it feel?" {...register("notes")} />
           {planDayId && (
             <p className="text-xs text-muted-foreground">
               This session will be linked to your active plan.
             </p>
           )}
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" type="button" onClick={closeModal}>Cancel</Button>
+            <Button variant="outline" type="button" onClick={closeModal}>
+              Cancel
+            </Button>
             <Button type="submit" loading={isSubmitting || logMutation.isPending}>
               Log session
             </Button>

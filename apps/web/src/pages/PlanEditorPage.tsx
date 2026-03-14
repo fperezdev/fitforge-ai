@@ -233,9 +233,7 @@ function ExercisePicker({
         </button>
       </div>
       <ul className="max-h-48 overflow-y-auto divide-y divide-border">
-        {isFetching && (
-          <li className="px-3 py-2 text-xs text-muted-foreground">Loading…</li>
-        )}
+        {isFetching && <li className="px-3 py-2 text-xs text-muted-foreground">Loading…</li>}
         {!isFetching && results.length === 0 && (
           <li className="px-3 py-2 text-xs text-muted-foreground">No results</li>
         )}
@@ -271,8 +269,10 @@ function SortableStrengthRow({
   onRemove: () => void;
 }) {
   const draggable = isEditing && !disabled;
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: row._key, disabled: !draggable });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: row._key,
+    disabled: !draggable,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -285,7 +285,7 @@ function SortableStrengthRow({
       style={style}
       className={cn(
         "grid grid-cols-[20px_1fr_56px_96px_56px_68px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 py-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20",
-        isDragging && "opacity-30"
+        isDragging && "opacity-30",
       )}
     >
       {/* Drag handle */}
@@ -295,7 +295,9 @@ function SortableStrengthRow({
         aria-label="Drag to reorder"
         className={cn(
           "flex items-center justify-center h-8 w-5 rounded text-muted-foreground/40 transition-colors touch-none",
-          draggable ? "cursor-grab active:cursor-grabbing hover:text-muted-foreground" : "cursor-default"
+          draggable
+            ? "cursor-grab active:cursor-grabbing hover:text-muted-foreground"
+            : "cursor-default",
         )}
       >
         <GripVertical className="h-3.5 w-3.5" />
@@ -304,7 +306,9 @@ function SortableStrengthRow({
       {/* Exercise name */}
       <div className="min-w-0 pr-2">
         <p className="text-sm font-semibold truncate leading-tight mb-0.5">{row.exerciseName}</p>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{row.exerciseMuscle}</p>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">
+          {row.exerciseMuscle}
+        </p>
       </div>
 
       {/* Sets */}
@@ -346,7 +350,9 @@ function SortableStrengthRow({
         value={row.rir ?? ""}
         disabled={disabled}
         onChange={(e) =>
-          onUpdate({ rir: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0) })
+          onUpdate({
+            rir: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
+          })
         }
         className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
       />
@@ -362,13 +368,16 @@ function SortableStrengthRow({
           disabled={disabled}
           onChange={(e) =>
             onUpdate({
-              restSeconds: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
+              restSeconds:
+                e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
             })
           }
           className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
         />
         {row.restSeconds != null && (
-          <span className="absolute right-1.5 bottom-1 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">s</span>
+          <span className="absolute right-1.5 bottom-1 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">
+            s
+          </span>
         )}
       </div>
 
@@ -403,10 +412,10 @@ function StrengthEditor({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
 
-  const activeRow = activeKey != null ? rows.find((r) => r._key === activeKey) ?? null : null;
+  const activeRow = activeKey != null ? (rows.find((r) => r._key === activeKey) ?? null) : null;
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveKey(null);
@@ -466,7 +475,9 @@ function StrengthEditor({
                 row={row}
                 isEditing={isEditing}
                 disabled={disabled}
-                onUpdate={(patch) => onChange(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))}
+                onUpdate={(patch) =>
+                  onChange(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))
+                }
                 onRemove={() => onChange(rows.filter((r) => r._key !== row._key))}
               />
             ))}
@@ -478,10 +489,18 @@ function StrengthEditor({
             <div className="grid grid-cols-[20px_1fr_56px_96px_56px_68px_36px] gap-x-2 items-center rounded-lg border border-primary/40 bg-card px-2 py-2 shadow-lg opacity-95">
               <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40" />
               <div className="min-w-0 pr-2">
-                <p className="text-sm font-semibold truncate leading-tight mb-0.5">{activeRow.exerciseName}</p>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">{activeRow.exerciseMuscle}</p>
+                <p className="text-sm font-semibold truncate leading-tight mb-0.5">
+                  {activeRow.exerciseName}
+                </p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">
+                  {activeRow.exerciseMuscle}
+                </p>
               </div>
-              <div /><div /><div /><div /><div />
+              <div />
+              <div />
+              <div />
+              <div />
+              <div />
             </div>
           )}
         </DragOverlay>
@@ -489,13 +508,16 @@ function StrengthEditor({
 
       {showPicker ? (
         <div className="pt-2 animate-in slide-in-from-top-2 fade-in duration-200">
-          <ExercisePicker
-            onSelect={addExercise}
-            onCancel={() => setShowPicker(false)}
-          />
+          <ExercisePicker onSelect={addExercise} onCancel={() => setShowPicker(false)} />
         </div>
       ) : (
-        <Button variant="dashed" size="sm" disabled={disabled} onClick={() => setShowPicker(true)} className="w-full mt-2">
+        <Button
+          variant="dashed"
+          size="sm"
+          disabled={disabled}
+          onClick={() => setShowPicker(true)}
+          className="w-full mt-2"
+        >
           <Plus className="h-3.5 w-3.5 mr-1.5" />
           Add exercise
         </Button>
@@ -520,8 +542,10 @@ function SortableCardioRow({
   onRemove: () => void;
 }) {
   const draggable = isEditing && !disabled;
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: row._key, disabled: !draggable });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: row._key,
+    disabled: !draggable,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -534,7 +558,7 @@ function SortableCardioRow({
       style={style}
       className={cn(
         "grid grid-cols-[20px_1fr_56px_72px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 py-2 shadow-sm transition-all focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20",
-        isDragging && "opacity-30"
+        isDragging && "opacity-30",
       )}
     >
       {/* Drag handle */}
@@ -544,7 +568,9 @@ function SortableCardioRow({
         aria-label="Drag to reorder"
         className={cn(
           "flex items-center justify-center h-8 w-5 rounded text-muted-foreground/40 transition-colors touch-none",
-          draggable ? "cursor-grab active:cursor-grabbing hover:text-muted-foreground" : "cursor-default"
+          draggable
+            ? "cursor-grab active:cursor-grabbing hover:text-muted-foreground"
+            : "cursor-default",
         )}
       >
         <GripVertical className="h-3.5 w-3.5" />
@@ -563,7 +589,9 @@ function SortableCardioRow({
       {/* Zone */}
       <div className="relative">
         {row.zone != null && (
-          <span className="absolute left-2 top-1.5 text-[10px] font-semibold text-amber-600/50 pointer-events-none">Z</span>
+          <span className="absolute left-2 top-1.5 text-[10px] font-semibold text-amber-600/50 pointer-events-none">
+            Z
+          </span>
         )}
         <input
           type="number"
@@ -574,12 +602,15 @@ function SortableCardioRow({
           disabled={disabled}
           onChange={(e) =>
             onUpdate({
-              zone: e.target.value === "" ? null : Math.min(5, Math.max(1, parseInt(e.target.value) || 1)),
+              zone:
+                e.target.value === ""
+                  ? null
+                  : Math.min(5, Math.max(1, parseInt(e.target.value) || 1)),
             })
           }
           className={cn(
             "w-full h-8 rounded-md border border-input bg-background text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed",
-            row.zone != null ? "pl-4" : ""
+            row.zone != null ? "pl-4" : "",
           )}
         />
       </div>
@@ -595,13 +626,16 @@ function SortableCardioRow({
           disabled={disabled}
           onChange={(e) =>
             onUpdate({
-              kilometers: e.target.value === "" ? null : Math.max(0, parseFloat(e.target.value) || 0),
+              kilometers:
+                e.target.value === "" ? null : Math.max(0, parseFloat(e.target.value) || 0),
             })
           }
           className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 pr-5 text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
         />
         {row.kilometers != null && (
-          <span className="absolute right-1.5 bottom-1.5 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">km</span>
+          <span className="absolute right-1.5 bottom-1.5 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">
+            km
+          </span>
         )}
       </div>
 
@@ -635,10 +669,10 @@ function CardioEditor({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
 
-  const activeRow = activeKey != null ? rows.find((r) => r._key === activeKey) ?? null : null;
+  const activeRow = activeKey != null ? (rows.find((r) => r._key === activeKey) ?? null) : null;
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveKey(null);
@@ -680,7 +714,9 @@ function CardioEditor({
                 row={row}
                 isEditing={isEditing}
                 disabled={disabled}
-                onUpdate={(patch) => onChange(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))}
+                onUpdate={(patch) =>
+                  onChange(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))
+                }
                 onRemove={() => onChange(rows.filter((r) => r._key !== row._key))}
               />
             ))}
@@ -692,13 +728,21 @@ function CardioEditor({
             <div className="grid grid-cols-[20px_1fr_56px_72px_36px] gap-x-2 items-center rounded-lg border border-amber-500/40 bg-card px-2 py-2 shadow-lg opacity-95">
               <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40" />
               <p className="text-sm font-medium truncate">{activeRow.name || "—"}</p>
-              <div /><div /><div />
+              <div />
+              <div />
+              <div />
             </div>
           )}
         </DragOverlay>
       </DndContext>
 
-      <Button variant="dashed" size="sm" disabled={disabled} onClick={() => onChange([...rows, { _key: uid(), name: "", zone: null, kilometers: null }])} className="w-full mt-2">
+      <Button
+        variant="dashed"
+        size="sm"
+        disabled={disabled}
+        onClick={() => onChange([...rows, { _key: uid(), name: "", zone: null, kilometers: null }])}
+        className="w-full mt-2"
+      >
         <Plus className="h-3.5 w-3.5 mr-1.5" />
         Add activity
       </Button>
@@ -716,13 +760,11 @@ function CardioEditor({
 function getPlanSlotDate(
   plan: Pick<TrainingPlan, "startDate" | "activatedAt" | "microcycleLength">,
   weekIndex0: number,
-  dayIndex0: number
+  dayIndex0: number,
 ): string | null {
   const anchorStr = plan.startDate ?? plan.activatedAt;
   if (!anchorStr) return null;
-  const anchor = plan.startDate
-    ? new Date(plan.startDate + "T00:00:00")
-    : new Date(anchorStr);
+  const anchor = plan.startDate ? new Date(plan.startDate + "T00:00:00") : new Date(anchorStr);
   const offset = weekIndex0 * plan.microcycleLength + dayIndex0;
   const slotDate = new Date(anchor.getTime() + offset * 86_400_000);
   return slotDate.toISOString().slice(0, 10);
@@ -779,14 +821,10 @@ function DayCell({
     return new Date(scheduledDate + "T00:00:00") < today;
   })();
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: day.dayNumber, disabled: !isDraggable || isOverlay || isPast });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: day.dayNumber,
+    disabled: !isDraggable || isOverlay || isPast,
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -831,11 +869,7 @@ function DayCell({
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn("relative", isDragging && "opacity-30")}
-    >
+    <div ref={setNodeRef} style={style} className={cn("relative", isDragging && "opacity-30")}>
       <button
         {...(isDraggable ? { ...attributes, ...listeners } : {})}
         onClick={handleClick}
@@ -846,9 +880,9 @@ function DayCell({
           hasAny
             ? cn("border-primary/30 bg-primary/5", !isPast && "hover:bg-primary/10")
             : day.type === "rest"
-            ? cn("border-dashed border-border bg-muted/30", !isPast && "hover:bg-muted/50")
-            : cn("border-dashed border-border", !isPast && "hover:bg-muted/40"),
-          isLocked && day.type !== "training" && "cursor-default opacity-70"
+              ? cn("border-dashed border-border bg-muted/30", !isPast && "hover:bg-muted/50")
+              : cn("border-dashed border-border", !isPast && "hover:bg-muted/40"),
+          isLocked && day.type !== "training" && "cursor-default opacity-70",
         )}
         aria-label={`Day ${day.dayNumber}`}
       >
@@ -860,13 +894,19 @@ function DayCell({
             </span>
           )}
           {/* "Missed" for past training days with no log at all */}
-          {!status && scheduledDate && day.type === "training" && (day.workoutTemplateId || day.cardioTemplateId) && (() => {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            return new Date(scheduledDate + "T00:00:00") < today ? (
-              <span className="block text-[9px] font-semibold leading-tight text-destructive/70">Missed</span>
-            ) : null;
-          })()}
+          {!status &&
+            scheduledDate &&
+            day.type === "training" &&
+            (day.workoutTemplateId || day.cardioTemplateId) &&
+            (() => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              return new Date(scheduledDate + "T00:00:00") < today ? (
+                <span className="block text-[9px] font-semibold leading-tight text-destructive/70">
+                  Missed
+                </span>
+              ) : null;
+            })()}
         </span>
 
         {day.type !== "training" ? (
@@ -877,12 +917,20 @@ function DayCell({
           <div className="space-y-0.5">
             {(() => {
               const ws = status?.workout;
-              const label = ws === "workout_skipped" ? "Strength skipped"
-                : ws === "workout_completed" ? "Strength done"
-                : (strengthName ?? "No Strength");
-              const color = ws === "workout_skipped" ? "text-slate-400"
-                : ws === "workout_completed" ? "text-emerald-600 dark:text-emerald-400"
-                : hasStrength ? "text-primary" : "text-muted-foreground/30";
+              const label =
+                ws === "workout_skipped"
+                  ? "Strength skipped"
+                  : ws === "workout_completed"
+                    ? "Strength done"
+                    : (strengthName ?? "No Strength");
+              const color =
+                ws === "workout_skipped"
+                  ? "text-slate-400"
+                  : ws === "workout_completed"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : hasStrength
+                      ? "text-primary"
+                      : "text-muted-foreground/30";
               return (
                 <span className={cn("block text-[10px] font-medium leading-tight truncate", color)}>
                   {label}
@@ -891,12 +939,20 @@ function DayCell({
             })()}
             {(() => {
               const cs = status?.cardio;
-              const label = cs === "cardio_skipped" ? "Cardio skipped"
-                : cs === "cardio_completed" ? "Cardio done"
-                : (cardioName ?? "No Cardio");
-              const color = cs === "cardio_skipped" ? "text-slate-400"
-                : cs === "cardio_completed" ? "text-emerald-600 dark:text-emerald-400"
-                : hasCardio ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/30";
+              const label =
+                cs === "cardio_skipped"
+                  ? "Cardio skipped"
+                  : cs === "cardio_completed"
+                    ? "Cardio done"
+                    : (cardioName ?? "No Cardio");
+              const color =
+                cs === "cardio_skipped"
+                  ? "text-slate-400"
+                  : cs === "cardio_completed"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : hasCardio
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-muted-foreground/30";
               return (
                 <span className={cn("block text-[10px] font-medium leading-tight truncate", color)}>
                   {label}
@@ -906,9 +962,7 @@ function DayCell({
           </div>
         )}
 
-        {isLocked && (
-          <Check className="h-3 w-3 text-emerald-500 absolute top-1.5 right-1.5" />
-        )}
+        {isLocked && <Check className="h-3 w-3 text-emerald-500 absolute top-1.5 right-1.5" />}
       </button>
 
       {/* Rest-day quick toggle popover — not available for past days */}
@@ -929,7 +983,7 @@ function DayCell({
                     "rounded-md px-2 py-1.5 text-xs font-medium border transition-colors",
                     day.type === t
                       ? DAY_TYPE_COLORS[t] + " ring-1 ring-inset ring-current"
-                      : "border-border text-muted-foreground hover:bg-muted"
+                      : "border-border text-muted-foreground hover:bg-muted",
                   )}
                 >
                   {DAY_TYPE_LABELS[t]}
@@ -956,7 +1010,7 @@ function DeleteZone({ canDelete }: { canDelete: boolean }) {
         isOver
           ? "border-destructive bg-destructive/10 text-destructive scale-[1.02]"
           : "border-destructive/40 text-destructive/60",
-        !canDelete && "opacity-40"
+        !canDelete && "opacity-40",
       )}
     >
       <Trash className="h-4 w-4" />
@@ -986,21 +1040,17 @@ function PlanView({
   // Local day order — only committed to the server on Save
   const canonicalOrder = Array.from({ length: plan.microcycleLength }, (_, i) => i + 1);
   const [isReordering, setIsReordering] = useState(false);
-  const [localDayOrder, setLocalDayOrder] = useState<number[]>(canonicalOrder);
+  const [localDayOrder, setLocalDayOrder] = useState<number[]>(() =>
+    Array.from({ length: plan.microcycleLength }, (_, i) => i + 1),
+  );
   // Holds the saved order while the refetch is in-flight, preventing flicker
   const [pendingOrder, setPendingOrder] = useState<number[] | null>(null);
-
-  // Reset local order whenever the server data changes (refetch completed)
-  useEffect(() => {
-    setLocalDayOrder(Array.from({ length: plan.microcycleLength }, (_, i) => i + 1));
-    setPendingOrder(null);
-  }, [plan.microcycleLength, plan.id, plan.microcycles]);
 
   const isLocked = plan.status === "completed";
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
   );
 
   const renameMutation = useMutation({
@@ -1036,8 +1086,7 @@ function PlanView({
   });
 
   const reorderDaysMutation = useMutation({
-    mutationFn: (order: number[]) =>
-      api.patch(`/plans/${plan.id}/days/reorder`, { order }),
+    mutationFn: (order: number[]) => api.patch(`/plans/${plan.id}/days/reorder`, { order }),
     onMutate: (order: number[]) => {
       // Immediately exit reorder mode and hold the saved order so the grid
       // doesn't flicker back to the stale canonical order during the refetch.
@@ -1052,6 +1101,7 @@ function PlanView({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      setPendingOrder(null);
     },
   });
 
@@ -1072,25 +1122,28 @@ function PlanView({
 
   // Pick the day data for the drag overlay from the first microcycle that has it configured,
   // so the ghost reflects real content rather than always defaulting to week 1.
-  const activeDayStub = activeId != null
-    ? (() => {
-        const mcWithDay = plan.microcycles.find((mc) => mc.days.some((d) => d.dayNumber === activeId));
-        if (mcWithDay) {
-          return mcWithDay.days.find((d) => d.dayNumber === activeId) ?? null;
-        }
-        return {
-          id: `stub-overlay-${activeId}`,
-          planMicrocycleId: plan.microcycles[0]?.id ?? "",
-          dayNumber: activeId,
-          type: "training" as DayType,
-          workoutTemplateId: null,
-          workoutTemplate: null,
-          cardioTemplateId: null,
-          cardioTemplate: null,
-          notes: null,
-        };
-      })()
-    : null;
+  const activeDayStub =
+    activeId != null
+      ? (() => {
+          const mcWithDay = plan.microcycles.find((mc) =>
+            mc.days.some((d) => d.dayNumber === activeId),
+          );
+          if (mcWithDay) {
+            return mcWithDay.days.find((d) => d.dayNumber === activeId) ?? null;
+          }
+          return {
+            id: `stub-overlay-${activeId}`,
+            planMicrocycleId: plan.microcycles[0]?.id ?? "",
+            dayNumber: activeId,
+            type: "training" as DayType,
+            workoutTemplateId: null,
+            workoutTemplate: null,
+            cardioTemplateId: null,
+            cardioTemplate: null,
+            notes: null,
+          };
+        })()
+      : null;
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as number);
@@ -1164,21 +1217,25 @@ function PlanView({
         <SortableContext items={dayOrder} strategy={horizontalListSortingStrategy}>
           {plan.microcycles.map((mc) => {
             const assignedCount = mc.days.filter(
-              (d) => d.type !== "training" || d.workoutTemplateId || d.cardioTemplateId
+              (d) => d.type !== "training" || d.workoutTemplateId || d.cardioTemplateId,
             ).length;
             const totalDays = plan.microcycleLength;
 
             // Week is fully done when every configured training day has a "done" log
-            const weekComplete = plan.status === "active" && (() => {
-              const trainingDays = mc.days.filter(
-                (d) => d.type === "training" && (d.workoutTemplateId || d.cardioTemplateId)
-              );
-              if (trainingDays.length === 0) return false;
-              return trainingDays.every((d) => {
-                const s = plan.dayLogs?.[`${mc.position - 1}:${d.dayNumber - 1}`];
-                return s && (s.workout === "workout_completed" || s.cardio === "cardio_completed");
-              });
-            })();
+            const weekComplete =
+              plan.status === "active" &&
+              (() => {
+                const trainingDays = mc.days.filter(
+                  (d) => d.type === "training" && (d.workoutTemplateId || d.cardioTemplateId),
+                );
+                if (trainingDays.length === 0) return false;
+                return trainingDays.every((d) => {
+                  const s = plan.dayLogs?.[`${mc.position - 1}:${d.dayNumber - 1}`];
+                  return (
+                    s && (s.workout === "workout_completed" || s.cardio === "cardio_completed")
+                  );
+                });
+              })();
 
             return (
               <div key={mc.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -1293,17 +1350,25 @@ function PlanView({
         </SortableContext>
 
         {/* Delete drop zone — only visible while reordering and dragging */}
-        {isReordering && activeId != null && (
-          <DeleteZone canDelete={canDeleteDay} />
-        )}
+        {isReordering && activeId != null && <DeleteZone canDelete={canDeleteDay} />}
 
         {!isLocked && (
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button variant="outline" size="sm" loading={addWeekMutation.isPending} onClick={() => addWeekMutation.mutate()}>
+            <Button
+              variant="outline"
+              size="sm"
+              loading={addWeekMutation.isPending}
+              onClick={() => addWeekMutation.mutate()}
+            >
               <Plus className="h-3.5 w-3.5 mr-1" />
               Add week
             </Button>
-            <Button variant="outline" size="sm" loading={addDayMutation.isPending} onClick={() => addDayMutation.mutate()}>
+            <Button
+              variant="outline"
+              size="sm"
+              loading={addDayMutation.isPending}
+              onClick={() => addDayMutation.mutate()}
+            >
               <Plus className="h-3.5 w-3.5 mr-1" />
               Add day to all weeks
             </Button>
@@ -1454,7 +1519,9 @@ function DayView({
 }) {
   const queryClient = useQueryClient();
 
-  const [selectedWeek, setSelectedWeek] = useState(initialWeek ?? plan.microcycles[0]?.position ?? 1);
+  const [selectedWeek, setSelectedWeek] = useState(
+    initialWeek ?? plan.microcycles[0]?.position ?? 1,
+  );
   const [selectedDay, setSelectedDay] = useState(initialDay ?? 1);
 
   const mc = plan.microcycles.find((m) => m.position === selectedWeek) ?? plan.microcycles[0];
@@ -1495,10 +1562,10 @@ function DayView({
   const [isEditing, setIsEditing] = useState(false);
   const [dayType, setDayType] = useState<DayType>(dayData.type);
   const [strengthRows, setStrengthRows] = useState<StrengthRow[]>(
-    strengthTemplate ? templateToStrengthRows(strengthTemplate) : []
+    strengthTemplate ? templateToStrengthRows(strengthTemplate) : [],
   );
   const [cardioRows, setCardioRows] = useState<CardioRow[]>(
-    cardioTemplate ? cardioTemplateToRows(cardioTemplate) : []
+    cardioTemplate ? cardioTemplateToRows(cardioTemplate) : [],
   );
   const [isDirty, setIsDirty] = useState(false);
 
@@ -1657,7 +1724,7 @@ function DayView({
                 "rounded-md px-3 py-1.5 text-sm font-medium border transition-colors",
                 selectedWeek === m.position
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
               W{m.position}
@@ -1685,8 +1752,8 @@ function DayView({
                   selectedDay === d
                     ? "bg-primary text-primary-foreground border-primary"
                     : isRest
-                    ? "border-dashed border-border text-muted-foreground/60 hover:bg-muted"
-                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                      ? "border-dashed border-border text-muted-foreground/60 hover:bg-muted"
+                      : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
                 D{d}
@@ -1704,25 +1771,32 @@ function DayView({
             <span className="text-sm font-semibold">
               Week {selectedWeek} · Day {selectedDay}
             </span>
-            {plan.status === "active" && (() => {
-              const d = getPlanSlotDate(plan, selectedWeek - 1, selectedDay - 1);
-              return d ? (
-                <span className="text-xs text-muted-foreground">{formatSlotDate(d)}</span>
-              ) : null;
-            })()}
+            {plan.status === "active" &&
+              (() => {
+                const d = getPlanSlotDate(plan, selectedWeek - 1, selectedDay - 1);
+                return d ? (
+                  <span className="text-xs text-muted-foreground">{formatSlotDate(d)}</span>
+                ) : null;
+              })()}
             <span
               className={cn(
                 "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border",
-                DAY_TYPE_COLORS[isEditing ? dayType : dayData.type]
+                DAY_TYPE_COLORS[isEditing ? dayType : dayData.type],
               )}
             >
               {DAY_TYPE_LABELS[isEditing ? dayType : dayData.type]}
             </span>
           </div>
 
-          {!isLocked && !isPast && (
-            isEditing ? (
-              <Button size="sm" variant="outline" onClick={cancelEdit} disabled={saveMutation.isPending}>
+          {!isLocked &&
+            !isPast &&
+            (isEditing ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={cancelEdit}
+                disabled={saveMutation.isPending}
+              >
                 <X className="h-3.5 w-3.5 mr-1" />
                 Cancel
               </Button>
@@ -1731,8 +1805,7 @@ function DayView({
                 <Pencil className="h-3.5 w-3.5 mr-1" />
                 Edit
               </Button>
-            )
-          )}
+            ))}
         </div>
 
         {/* Day type toggle — always visible while editing */}
@@ -1741,12 +1814,15 @@ function DayView({
             {(["training", "rest"] as DayType[]).map((t) => (
               <button
                 key={t}
-                onClick={() => { setDayType(t); markDirty(); }}
+                onClick={() => {
+                  setDayType(t);
+                  markDirty();
+                }}
                 className={cn(
                   "rounded-md px-2.5 py-1 text-xs font-medium border transition-colors",
                   dayType === t
                     ? DAY_TYPE_COLORS[t] + " ring-1 ring-inset ring-current"
-                    : "border-border text-muted-foreground hover:bg-muted"
+                    : "border-border text-muted-foreground hover:bg-muted",
                 )}
               >
                 {DAY_TYPE_LABELS[t]}
@@ -1780,7 +1856,10 @@ function DayView({
                   rows={strengthRows}
                   isEditing={isEditing}
                   disabled={saveMutation.isPending}
-                  onChange={(r) => { setStrengthRows(r); markDirty(); }}
+                  onChange={(r) => {
+                    setStrengthRows(r);
+                    markDirty();
+                  }}
                 />
               )}
             </div>
@@ -1803,7 +1882,10 @@ function DayView({
                   rows={cardioRows}
                   isEditing={isEditing}
                   disabled={saveMutation.isPending}
-                  onChange={(r) => { setCardioRows(r); markDirty(); }}
+                  onChange={(r) => {
+                    setCardioRows(r);
+                    markDirty();
+                  }}
                 />
               )}
             </div>
@@ -1894,12 +1976,23 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
   const pct = Math.round(adherence.completionRate * 100);
 
   // Determine which dataset to show in the per-week table
-  const component = tab === "strength" ? adherence.strength : tab === "cardio" ? adherence.cardio : null;
+  const component =
+    tab === "strength" ? adherence.strength : tab === "cardio" ? adherence.cardio : null;
   const weeksToShow = component ? component.weeks : adherence.weeks.filter((w) => w.planned > 0);
   const hasData = weeksToShow.some((w) => w.planned > 0);
   const totals = component
-    ? { planned: component.totalPlanned, completed: component.totalCompleted, skipped: component.totalSkipped, missed: component.totalMissed }
-    : { planned: adherence.totalPlanned, completed: adherence.totalCompleted, skipped: adherence.totalSkipped, missed: adherence.totalMissed };
+    ? {
+        planned: component.totalPlanned,
+        completed: component.totalCompleted,
+        skipped: component.totalSkipped,
+        missed: component.totalMissed,
+      }
+    : {
+        planned: adherence.totalPlanned,
+        completed: adherence.totalCompleted,
+        skipped: adherence.totalSkipped,
+        missed: adherence.totalMissed,
+      };
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-4">
@@ -1930,7 +2023,7 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
               "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
               tab === key
                 ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {icon}
@@ -2001,9 +2094,7 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
               <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
                 {w.skipped}
               </span>
-              <span className="text-center tabular-nums text-destructive/70">
-                {w.missed}
-              </span>
+              <span className="text-center tabular-nums text-destructive/70">{w.missed}</span>
             </div>
           ))}
 
@@ -2011,12 +2102,23 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
           {totals.planned > 0 && (
             <p className="text-xs text-muted-foreground text-center pt-1">
               {totals.planned} planned ·{" "}
-              <span className="text-emerald-600 dark:text-emerald-400">{totals.completed} done</span>
+              <span className="text-emerald-600 dark:text-emerald-400">
+                {totals.completed} done
+              </span>
               {totals.skipped > 0 && (
-                <> · <span className="text-amber-600 dark:text-amber-400">{totals.skipped} skipped</span></>
+                <>
+                  {" "}
+                  ·{" "}
+                  <span className="text-amber-600 dark:text-amber-400">
+                    {totals.skipped} skipped
+                  </span>
+                </>
               )}
               {totals.missed > 0 && (
-                <> · <span className="text-destructive/70">{totals.missed} missed</span></>
+                <>
+                  {" "}
+                  · <span className="text-destructive/70">{totals.missed} missed</span>
+                </>
               )}
             </p>
           )}
@@ -2079,7 +2181,9 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
       <div className="rounded-lg bg-card border border-border px-4 py-3 space-y-2">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-medium tabular-nums">{assignedDays}/{totalDays}</span>
+            <span className="text-sm font-medium tabular-nums">
+              {assignedDays}/{totalDays}
+            </span>
             <span className="text-sm text-muted-foreground">
               days configured{allAssigned ? " — ready to activate" : ""}
             </span>
@@ -2094,7 +2198,7 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
           <div
             className={cn(
               "h-full rounded-full transition-all duration-500",
-              allAssigned ? "bg-emerald-500" : "bg-primary"
+              allAssigned ? "bg-emerald-500" : "bg-primary",
             )}
             style={{ width: `${pct}%` }}
           />
@@ -2103,13 +2207,16 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
 
       <Modal
         open={modalOpen}
-        onClose={() => { setModalOpen(false); setStartDate(todayISO()); }}
+        onClose={() => {
+          setModalOpen(false);
+          setStartDate(todayISO());
+        }}
         title="Set plan start date"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Day 1 of your plan will be scheduled on this date. Each training day
-            gets a fixed calendar slot — skipping a day doesn't shift the schedule.
+            Day 1 of your plan will be scheduled on this date. Each training day gets a fixed
+            calendar slot — skipping a day doesn't shift the schedule.
           </p>
           <DatePicker
             label="Start date"
@@ -2127,14 +2234,14 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
           <div className="flex justify-end gap-3 pt-2">
             <Button
               variant="outline"
-              onClick={() => { setModalOpen(false); setStartDate(todayISO()); }}
+              onClick={() => {
+                setModalOpen(false);
+                setStartDate(todayISO());
+              }}
             >
               Cancel
             </Button>
-            <Button
-              loading={finalizeMutation.isPending}
-              onClick={() => finalizeMutation.mutate()}
-            >
+            <Button loading={finalizeMutation.isPending} onClick={() => finalizeMutation.mutate()}>
               Activate
             </Button>
           </div>
@@ -2161,7 +2268,12 @@ export function PlanEditorPage() {
   });
   const id = planMeta?.id;
 
-  const { data: plan, isLoading: isPlanLoading, isError, refetch } = useQuery<TrainingPlan>({
+  const {
+    data: plan,
+    isLoading: isPlanLoading,
+    isError,
+    refetch,
+  } = useQuery<TrainingPlan>({
     queryKey: ["plan", id],
     queryFn: () => api.get(`/plans/${id}`),
     enabled: !!id,
@@ -2225,116 +2337,123 @@ export function PlanEditorPage() {
   return (
     <>
       <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-bold truncate">{plan.name}</h1>
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border shrink-0",
-                plan.status === "active"
-                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-bold truncate">{plan.name}</h1>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border shrink-0",
+                  plan.status === "active"
+                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                    : plan.status === "completed"
+                      ? "bg-muted text-muted-foreground border-border"
+                      : "bg-muted/50 text-muted-foreground border-border",
+                )}
+              >
+                {plan.status === "active"
+                  ? "Active"
                   : plan.status === "completed"
-                  ? "bg-muted text-muted-foreground border-border"
-                  : "bg-muted/50 text-muted-foreground border-border"
+                    ? "Completed"
+                    : "Draft"}
+              </span>
+            </div>
+            {plan.description && (
+              <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">
+                {plan.description}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              {plan.mesocycleLength} week{plan.mesocycleLength !== 1 ? "s" : ""} ·{" "}
+              {plan.microcycleLength} days/week
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setDeleteModalOpen(true)}
+            aria-label="Delete plan"
+            className="text-muted-foreground hover:text-destructive shrink-0"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Status banner */}
+        <PlanStatusBanner plan={plan} />
+
+        {/* Adherence metrics — active plans only */}
+        {plan.status === "active" && <PlanAdherenceCard planId={plan.id} />}
+
+        {/* View switcher */}
+        <div
+          className="inline-flex rounded-lg border border-border bg-muted p-0.5 gap-0.5"
+          role="tablist"
+          aria-label="Plan view"
+        >
+          {views.map(({ key, label, icon }) => (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={view === key}
+              onClick={() => setView(key)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                view === key
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {plan.status === "active" ? "Active" : plan.status === "completed" ? "Completed" : "Draft"}
-            </span>
-          </div>
-          {plan.description && (
-            <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{plan.description}</p>
-          )}
-          <p className="text-xs text-muted-foreground mt-1">
-            {plan.mesocycleLength} week{plan.mesocycleLength !== 1 ? "s" : ""} ·{" "}
-            {plan.microcycleLength} days/week
-          </p>
+              {icon}
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setDeleteModalOpen(true)}
-          aria-label="Delete plan"
-          className="text-muted-foreground hover:text-destructive shrink-0"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+
+        {/* View content */}
+        {view === "mesocycle" && (
+          <PlanView
+            plan={plan}
+            templates={templates}
+            cardioTemplates={cardioTemplates}
+            onNavigateToDay={goToDayView}
+          />
+        )}
+        {view === "daily" && (
+          <DayView
+            key={`${dayViewWeek}-${dayViewDay}`}
+            plan={plan}
+            templates={templates}
+            cardioTemplates={cardioTemplates}
+            initialWeek={dayViewWeek}
+            initialDay={dayViewDay}
+          />
+        )}
       </div>
 
-      {/* Status banner */}
-      <PlanStatusBanner plan={plan} />
-
-      {/* Adherence metrics — active plans only */}
-      {plan.status === "active" && <PlanAdherenceCard planId={plan.id} />}
-
-      {/* View switcher */}
-      <div
-        className="inline-flex rounded-lg border border-border bg-muted p-0.5 gap-0.5"
-        role="tablist"
-        aria-label="Plan view"
+      <Modal
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Delete training plan"
       >
-        {views.map(({ key, label, icon }) => (
-          <button
-            key={key}
-            role="tab"
-            aria-selected={view === key}
-            onClick={() => setView(key)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-              view === key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
+        <p className="text-sm text-muted-foreground mb-6">
+          This will permanently delete your training plan and all its data. This action cannot be
+          undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={() => setDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => deletePlanMutation.mutate()}
+            loading={deletePlanMutation.isPending}
           >
-            {icon}
-            <span className="hidden sm:inline">{label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* View content */}
-      {view === "mesocycle" && (
-        <PlanView
-          plan={plan}
-          templates={templates}
-          cardioTemplates={cardioTemplates}
-          onNavigateToDay={goToDayView}
-        />
-      )}
-      {view === "daily" && (
-        <DayView
-          key={`${dayViewWeek}-${dayViewDay}`}
-          plan={plan}
-          templates={templates}
-          cardioTemplates={cardioTemplates}
-          initialWeek={dayViewWeek}
-          initialDay={dayViewDay}
-        />
-      )}
-    </div>
-
-    <Modal
-      open={deleteModalOpen}
-      onClose={() => setDeleteModalOpen(false)}
-      title="Delete training plan"
-    >
-      <p className="text-sm text-muted-foreground mb-6">
-        This will permanently delete your training plan and all its data. This action cannot be undone.
-      </p>
-      <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={() => setDeleteModalOpen(false)}>
-          Cancel
-        </Button>
-        <Button
-          variant="destructive"
-          onClick={() => deletePlanMutation.mutate()}
-          loading={deletePlanMutation.isPending}
-        >
-          Delete plan
-        </Button>
-      </div>
-    </Modal>
+            Delete plan
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }

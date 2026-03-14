@@ -58,29 +58,31 @@ export function SkipDayModal({
           >
             <CalendarClock className="h-5 w-5 text-primary" />
             <span className="text-sm font-medium">Move to tomorrow</span>
-            <span className="text-xs text-muted-foreground">
-              Schedule shifts forward 1 day
-            </span>
+            <span className="text-xs text-muted-foreground">Schedule shifts forward 1 day</span>
           </button>
 
           {/* Skip option */}
           <button
             type="button"
             disabled={isPending}
-            onClick={() => { onSkip(skipNotes || undefined); setSkipNotes(""); }}
+            onClick={() => {
+              onSkip(skipNotes || undefined);
+              setSkipNotes("");
+            }}
             className="flex flex-col items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-4 text-center transition-colors hover:border-destructive/50 hover:bg-destructive/5 disabled:opacity-50"
           >
             <SkipForward className="h-5 w-5 text-destructive" />
             <span className="text-sm font-medium">Skip day</span>
-            <span className="text-xs text-muted-foreground">
-              Mark as skipped, no reschedule
-            </span>
+            <span className="text-xs text-muted-foreground">Mark as skipped, no reschedule</span>
           </button>
         </div>
 
         {/* Optional skip reason */}
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="skip-notes" className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          <label
+            htmlFor="skip-notes"
+            className="text-xs font-medium text-muted-foreground uppercase tracking-wide"
+          >
             Reason for skipping (optional)
           </label>
           <textarea

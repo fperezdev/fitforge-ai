@@ -10,10 +10,10 @@ function CaptionWithDropdowns() {
   const { months: calMonths, goToMonth, previousMonth, nextMonth, dayPickerProps } = useDayPicker();
   const currentMonth = calMonths[0]?.date ?? new Date();
   const fromDate = (dayPickerProps as { fromDate?: Date }).fromDate;
-  const toDate   = (dayPickerProps as { toDate?: Date }).toDate;
+  const toDate = (dayPickerProps as { toDate?: Date }).toDate;
 
   const minYear = fromDate ? getYear(fromDate) : 1900;
-  const maxYear = toDate   ? getYear(toDate)   : getYear(new Date());
+  const maxYear = toDate ? getYear(toDate) : getYear(new Date());
 
   const years = React.useMemo(() => {
     const arr: number[] = [];
@@ -22,20 +22,29 @@ function CaptionWithDropdowns() {
   }, [minYear, maxYear]);
 
   const monthNames = [
-    "January","February","March","April",
-    "May","June","July","August",
-    "September","October","November","December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
 
   const navBtnCls = cn(
     "h-7 w-7 shrink-0 rounded-md flex items-center justify-center",
     "text-muted-foreground hover:bg-muted hover:text-foreground transition-colors",
-    "disabled:opacity-30 disabled:cursor-not-allowed"
+    "disabled:opacity-30 disabled:cursor-not-allowed",
   );
 
   const selectCls = cn(
     "rounded border border-border bg-background px-1.5 py-1 text-sm font-semibold text-foreground",
-    "focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
+    "focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer",
   );
 
   return (
@@ -58,7 +67,9 @@ function CaptionWithDropdowns() {
           className={selectCls}
         >
           {monthNames.map((m, i) => (
-            <option key={m} value={i}>{m}</option>
+            <option key={m} value={i}>
+              {m}
+            </option>
           ))}
         </select>
         <select
@@ -68,7 +79,9 @@ function CaptionWithDropdowns() {
           className={selectCls}
         >
           {years.map((y) => (
-            <option key={y} value={y}>{y}</option>
+            <option key={y} value={y}>
+              {y}
+            </option>
           ))}
         </select>
       </div>
@@ -88,40 +101,39 @@ function CaptionWithDropdowns() {
 
 // ─── Calendar ─────────────────────────────────────────────────────────────────
 
-function Calendar({
-  className,
-  ...props
-}: React.ComponentProps<typeof DayPicker>) {
+function Calendar({ className, ...props }: React.ComponentProps<typeof DayPicker>) {
   return (
     <DayPicker
       showOutsideDays
       className={cn("p-3", className)}
       classNames={{
-        months:        "flex flex-col",
-        month:         "space-y-3",
+        months: "flex flex-col",
+        month: "space-y-3",
         month_caption: "flex items-center h-9",
         caption_label: "hidden",
         // Hide the built-in Nav — we render prev/next inside CaptionWithDropdowns
-        nav:           "hidden",
+        nav: "hidden",
         button_previous: "hidden",
-        button_next:     "hidden",
-        month_grid:    "w-full border-collapse table-fixed",
+        button_next: "hidden",
+        month_grid: "w-full border-collapse table-fixed",
         // thead / th — table layout, no flex override
-        weekdays:      "",
-        weekday:       "text-muted-foreground text-center text-xs font-medium pb-1",
+        weekdays: "",
+        weekday: "text-muted-foreground text-center text-xs font-medium pb-1",
         // tbody / tr — table layout
-        week:          "",
-        day:           "text-center text-sm p-0",
-        day_button:    cn(
+        week: "",
+        day: "text-center text-sm p-0",
+        day_button: cn(
           "flex items-center justify-center w-full h-9 rounded-md font-normal transition-colors",
           "hover:bg-muted hover:text-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         ),
-        selected:  "[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
-        today:     "[&>button]:font-bold [&>button]:ring-1 [&>button]:ring-primary",
-        outside:   "[&>button]:text-muted-foreground [&>button]:opacity-40",
-        disabled:  "[&>button]:text-muted-foreground [&>button]:opacity-30 [&>button]:cursor-not-allowed",
-        hidden:    "invisible",
+        selected:
+          "[&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
+        today: "[&>button]:font-bold [&>button]:ring-1 [&>button]:ring-primary",
+        outside: "[&>button]:text-muted-foreground [&>button]:opacity-40",
+        disabled:
+          "[&>button]:text-muted-foreground [&>button]:opacity-30 [&>button]:cursor-not-allowed",
+        hidden: "invisible",
       }}
       components={{
         // Suppress the built-in Chevron — nav is hidden anyway
@@ -214,7 +226,7 @@ export function DatePicker({
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             "disabled:cursor-not-allowed disabled:opacity-50",
             !selected && "text-muted-foreground",
-            error && "border-destructive"
+            error && "border-destructive",
           )}
         >
           <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -239,7 +251,7 @@ export function DatePicker({
               toDate={toDate}
               disabled={[
                 ...(fromDate ? [{ before: fromDate }] : []),
-                ...(toDate   ? [{ after:  toDate   }] : []),
+                ...(toDate ? [{ after: toDate }] : []),
               ]}
             />
           </div>

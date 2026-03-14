@@ -56,17 +56,13 @@ export const exerciseRoutes = new Hono()
     });
 
     const filtered = search
-      ? results.filter((e) =>
-          e.name.toLowerCase().includes(search.toLowerCase())
-        )
+      ? results.filter((e) => e.name.toLowerCase().includes(search.toLowerCase()))
       : results;
 
     const muscleFiltered =
       muscle && muscleSchema.safeParse(muscle).success
         ? filtered.filter(
-            (e) =>
-              e.primaryMuscle === muscle ||
-              e.secondaryMuscles.includes(muscle as any)
+            (e) => e.primaryMuscle === muscle || (e.secondaryMuscles as string[]).includes(muscle),
           )
         : filtered;
 

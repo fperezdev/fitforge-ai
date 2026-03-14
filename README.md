@@ -8,12 +8,12 @@ AI-powered workout planner for hypertrophy and running, with a Gemini-backed coa
 
 ## Prerequisites
 
-| Tool | Version |
-|------|---------|
-| Node.js | 20+ |
-| pnpm | 9+ (`npm install -g pnpm`) |
-| A Supabase project | — |
-| A Google Gemini API key | — |
+| Tool                    | Version                    |
+| ----------------------- | -------------------------- |
+| Node.js                 | 20+                        |
+| pnpm                    | 9+ (`npm install -g pnpm`) |
+| A Supabase project      | —                          |
+| A Google Gemini API key | —                          |
 
 ---
 
@@ -33,15 +33,15 @@ pnpm install
 cp apps/api/.env.example apps/api/.env
 ```
 
-| Variable | Where to find it |
-|----------|-----------------|
-| `DATABASE_URL` | Supabase → Project Settings → Database → Connection string (use the "URI" format, port `5432`) |
-| `SUPABASE_URL` | Supabase → Project Settings → API → Project URL |
-| `SUPABASE_PUBLISHABLE_KEY` | Supabase → Connect → API Keys → Publishable Key |
-| `SUPABASE_SECRET_KEY` | Supabase → Settings → API Keys → Secret key |
-| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/app/apikey) |
-| `WEB_URL` | `http://localhost:5173` (default Vite port) |
-| `PORT` | `3000` (default) |
+| Variable                   | Where to find it                                                                               |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`             | Supabase → Project Settings → Database → Connection string (use the "URI" format, port `5432`) |
+| `SUPABASE_URL`             | Supabase → Project Settings → API → Project URL                                                |
+| `SUPABASE_PUBLISHABLE_KEY` | Supabase → Connect → API Keys → Publishable Key                                                |
+| `SUPABASE_SECRET_KEY`      | Supabase → Settings → API Keys → Secret key                                                    |
+| `GEMINI_API_KEY`           | [Google AI Studio](https://aistudio.google.com/app/apikey)                                     |
+| `WEB_URL`                  | `http://localhost:5173` (default Vite port)                                                    |
+| `PORT`                     | `3000` (default)                                                                               |
 
 **Web** — copy and fill in `apps/web/.env`:
 
@@ -49,8 +49,8 @@ cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
 ```
 
-| Variable | Value |
-|----------|-------|
+| Variable       | Value                   |
+| -------------- | ----------------------- |
 | `VITE_API_URL` | `http://localhost:3000` |
 
 ### 3. Run database migrations
@@ -62,6 +62,7 @@ pnpm --filter @fitforge/db exec drizzle-kit migrate
 ```
 
 > If you need to generate new migration files after changing the schema:
+>
 > ```bash
 > pnpm --filter @fitforge/db exec drizzle-kit generate
 > pnpm --filter @fitforge/db exec drizzle-kit migrate
@@ -96,10 +97,10 @@ fitforge-ai/
 
 The repo ships with a `render.yaml` that defines two services:
 
-| Service | Type | Name |
-|---------|------|------|
-| Backend | Node.js web service | `fitforge-api` |
-| Frontend | Static site | `fitforge-web` |
+| Service  | Type                | Name           |
+| -------- | ------------------- | -------------- |
+| Backend  | Node.js web service | `fitforge-api` |
+| Frontend | Static site         | `fitforge-web` |
 
 ### Steps
 
@@ -112,19 +113,19 @@ The repo ships with a `render.yaml` that defines two services:
 
    **`fitforge-api`**
 
-   | Variable | Value |
-   |----------|-------|
-   | `DATABASE_URL` | Supabase connection string |
-   | `SUPABASE_URL` | Supabase project URL |
-   | `SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key |
-   | `SUPABASE_SECRET_KEY` | Supabase secret key |
-   | `GEMINI_API_KEY` | Gemini API key |
-   | `WEB_URL` | Public URL of `fitforge-web` (e.g. `https://fitforge-web.onrender.com`) |
+   | Variable                   | Value                                                                   |
+   | -------------------------- | ----------------------------------------------------------------------- |
+   | `DATABASE_URL`             | Supabase connection string                                              |
+   | `SUPABASE_URL`             | Supabase project URL                                                    |
+   | `SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key                                                |
+   | `SUPABASE_SECRET_KEY`      | Supabase secret key                                                     |
+   | `GEMINI_API_KEY`           | Gemini API key                                                          |
+   | `WEB_URL`                  | Public URL of `fitforge-web` (e.g. `https://fitforge-web.onrender.com`) |
 
    **`fitforge-web`**
 
-   | Variable | Value |
-   |----------|-------|
+   | Variable       | Value                                                                   |
+   | -------------- | ----------------------------------------------------------------------- |
    | `VITE_API_URL` | Public URL of `fitforge-api` (e.g. `https://fitforge-api.onrender.com`) |
 
 4. Trigger a deploy. Render will install pnpm, build both workspaces, and start the API.

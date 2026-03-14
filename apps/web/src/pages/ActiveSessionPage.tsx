@@ -52,7 +52,7 @@ function RestTimer({ seconds, onDone }: { seconds: number; onDone: () => void })
       }
     }, 500);
     return () => clearInterval(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pct = (remaining / seconds) * 100;
@@ -105,13 +105,13 @@ function SetRow({
   const rirPlaceholder = targetRir != null ? String(targetRir) : "RIR";
 
   return (
-    <div className={cn(
-      "grid grid-cols-[2rem_1fr_1fr_1fr_2rem] gap-2 items-center py-1.5",
-      set.completed && "opacity-60"
-    )}>
-      <span className="text-xs text-muted-foreground font-mono text-center">
-        {set.setNumber}
-      </span>
+    <div
+      className={cn(
+        "grid grid-cols-[2rem_1fr_1fr_1fr_2rem] gap-2 items-center py-1.5",
+        set.completed && "opacity-60",
+      )}
+    >
+      <span className="text-xs text-muted-foreground font-mono text-center">{set.setNumber}</span>
       <input
         type="number"
         value={weight}
@@ -145,9 +145,7 @@ function SetRow({
         onClick={() => onUpdate({ completed: !set.completed })}
         className={cn(
           "h-7 w-7 rounded flex items-center justify-center transition-colors",
-          set.completed
-            ? "bg-emerald-500 text-white"
-            : "border border-border hover:bg-accent"
+          set.completed ? "bg-emerald-500 text-white" : "border border-border hover:bg-accent",
         )}
         aria-label={set.completed ? "Mark incomplete" : "Mark complete"}
       >
@@ -187,19 +185,12 @@ export function ActiveSessionPage() {
       entryId: string;
       setId: string;
       data: Record<string, unknown>;
-    }) =>
-      api.patch(`/sessions/${id}/exercises/${entryId}/sets/${setId}`, data),
+    }) => api.patch(`/sessions/${id}/exercises/${entryId}/sets/${setId}`, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session", id] }),
   });
 
   const addSetMutation = useMutation({
-    mutationFn: ({
-      entryId,
-      setNumber,
-    }: {
-      entryId: string;
-      setNumber: number;
-    }) =>
+    mutationFn: ({ entryId, setNumber }: { entryId: string; setNumber: number }) =>
       api.post(`/sessions/${id}/exercises/${entryId}/sets`, {
         setNumber,
         type: "working",
@@ -209,8 +200,7 @@ export function ActiveSessionPage() {
   });
 
   const finishMutation = useMutation({
-    mutationFn: () =>
-      api.patch(`/sessions/${id}`, { status: "completed" }),
+    mutationFn: () => api.patch(`/sessions/${id}`, { status: "completed" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       navigate("/workout");
@@ -237,15 +227,11 @@ export function ActiveSessionPage() {
         <div>
           <h1 className="text-xl font-bold">{session.name ?? "Workout"}</h1>
           <p className="text-sm text-muted-foreground">
-            {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}{" "}
-            · {completedSets}/{totalSets} sets
+            {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")} · {completedSets}/
+            {totalSets} sets
           </p>
         </div>
-        <Button
-          variant="destructive"
-          size="sm"
-          onClick={() => setFinishModal(true)}
-        >
+        <Button variant="destructive" size="sm" onClick={() => setFinishModal(true)}>
           <StopCircle className="h-4 w-4" />
           Finish
         </Button>
@@ -260,12 +246,7 @@ export function ActiveSessionPage() {
       </div>
 
       {/* Rest timer */}
-      {restTimer && (
-        <RestTimer
-          seconds={restTimer.seconds}
-          onDone={() => setRestTimer(null)}
-        />
-      )}
+      {restTimer && <RestTimer seconds={restTimer.seconds} onDone={() => setRestTimer(null)} />}
 
       {/* Exercise list */}
       <div className="space-y-3">
@@ -279,17 +260,13 @@ export function ActiveSessionPage() {
               <Card key={entry.id}>
                 <button
                   className="w-full text-left"
-                  onClick={() =>
-                    setExpandedEntry(isExpanded ? null : entry.id)
-                  }
+                  onClick={() => setExpandedEntry(isExpanded ? null : entry.id)}
                   aria-expanded={isExpanded}
                 >
                   <CardHeader className="py-4">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">
-                          {entry.exercise.name}
-                        </span>
+                        <span className="font-medium">{entry.exercise.name}</span>
                         <Badge variant={done > 0 ? "success" : "secondary"}>
                           {done}/{entry.sets.length} sets
                         </Badge>
@@ -297,7 +274,7 @@ export function ActiveSessionPage() {
                       <ChevronDown
                         className={cn(
                           "h-4 w-4 text-muted-foreground transition-transform",
-                          isExpanded && "rotate-180"
+                          isExpanded && "rotate-180",
                         )}
                       />
                     </div>
@@ -356,14 +333,10 @@ export function ActiveSessionPage() {
           })}
       </div>
 
-      <Modal
-        open={finishModal}
-        onClose={() => setFinishModal(false)}
-        title="Finish workout?"
-      >
+      <Modal open={finishModal} onClose={() => setFinishModal(false)} title="Finish workout?">
         <p className="text-sm text-muted-foreground mb-6">
-          {completedSets}/{totalSets} sets completed. This will mark the session
-          as done and return you to the workout page.
+          {completedSets}/{totalSets} sets completed. This will mark the session as done and return
+          you to the workout page.
         </p>
         <div className="flex justify-end gap-3">
           <Button variant="ghost" onClick={() => setFinishModal(false)}>

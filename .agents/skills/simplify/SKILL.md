@@ -19,6 +19,7 @@ compatibility: opencode
 ## When to use me
 
 Use this skill when:
+
 - A function or module has grown too large or hard to reason about
 - There is duplicated logic across multiple files
 - Code review feedback mentions confusion or complexity

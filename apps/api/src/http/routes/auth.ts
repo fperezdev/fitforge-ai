@@ -39,8 +39,10 @@ export const authRoutes = new Hono()
     });
 
     // Sign in to get tokens
-    const { data: session, error: signInError } =
-      await supabase.auth.signInWithPassword({ email, password });
+    const { data: session, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
     if (signInError || !session.session) {
       return c.json({ error: "Account created but sign-in failed" }, 500);
@@ -52,7 +54,7 @@ export const authRoutes = new Hono()
         refreshToken: session.session.refresh_token,
         user: { id: data.user.id, email: data.user.email },
       },
-      201
+      201,
     );
   })
 
@@ -86,24 +88,20 @@ export const authRoutes = new Hono()
     return c.json({ success: true });
   })
 
-  .post(
-    "/refresh",
-    zValidator("json", z.object({ refreshToken: z.string() })),
-    async (c) => {
-      const { refreshToken } = c.req.valid("json");
-      const supabase = getSupabaseClient();
+  .post("/refresh", zValidator("json", z.object({ refreshToken: z.string() })), async (c) => {
+    const { refreshToken } = c.req.valid("json");
+    const supabase = getSupabaseClient();
 
-      const { data, error } = await supabase.auth.refreshSession({
-        refresh_token: refreshToken,
-      });
+    const { data, error } = await supabase.auth.refreshSession({
+      refresh_token: refreshToken,
+    });
 
-      if (error || !data.session) {
-        return c.json({ error: "Invalid refresh token" }, 401);
-      }
-
-      return c.json({
-        accessToken: data.session.access_token,
-        refreshToken: data.session.refresh_token,
-      });
+    if (error || !data.session) {
+      return c.json({ error: "Invalid refresh token" }, 401);
     }
-  );
+
+    return c.json({
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+    });
+  });

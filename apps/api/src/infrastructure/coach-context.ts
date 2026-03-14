@@ -3,9 +3,6 @@ import { getDb } from "./db.js";
 import {
   userProfiles,
   workoutSessions,
-  exerciseEntries,
-  exerciseSets,
-  exercises,
   cardioSessions,
   personalRecords,
   weightEntries,
@@ -16,7 +13,7 @@ import type { CoachContext } from "../domain/types.js";
 
 export async function buildCoachContext(
   userId: string,
-  conversationId: string
+  conversationId: string,
 ): Promise<CoachContext> {
   const db = getDb();
 
@@ -34,10 +31,7 @@ export async function buildCoachContext(
 
       // Last 7 workout sessions with exercises + sets
       db.query.workoutSessions.findMany({
-        where: and(
-          eq(workoutSessions.userId, userId),
-          eq(workoutSessions.status, "completed")
-        ),
+        where: and(eq(workoutSessions.userId, userId), eq(workoutSessions.status, "completed")),
         orderBy: [desc(workoutSessions.completedAt)],
         limit: 7,
         with: {
@@ -52,20 +46,14 @@ export async function buildCoachContext(
 
       // Last 5 cardio sessions
       db.query.cardioSessions.findMany({
-        where: and(
-          eq(cardioSessions.userId, userId),
-          eq(cardioSessions.status, "completed")
-        ),
+        where: and(eq(cardioSessions.userId, userId), eq(cardioSessions.status, "completed")),
         orderBy: [desc(cardioSessions.completedAt)],
         limit: 5,
       }),
 
       // Top 10 PRs (estimated 1RM)
       db.query.personalRecords.findMany({
-        where: and(
-          eq(personalRecords.userId, userId),
-          eq(personalRecords.type, "estimated_1rm")
-        ),
+        where: and(eq(personalRecords.userId, userId), eq(personalRecords.type, "estimated_1rm")),
         orderBy: [desc(personalRecords.value)],
         limit: 10,
         with: { exercise: true },
@@ -96,9 +84,7 @@ export async function buildCoachContext(
     profile: profile
       ? {
           ...profile,
-          unitPreference: (profile.unitPreference ?? "metric") as
-            | "metric"
-            | "imperial",
+          unitPreference: (profile.unitPreference ?? "metric") as "metric" | "imperial",
           injuries: profile.injuries ?? null,
           createdAt: profile.createdAt.toISOString(),
           updatedAt: profile.updatedAt.toISOString(),

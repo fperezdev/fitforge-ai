@@ -52,9 +52,7 @@ export function RegisterPage() {
           </div>
           <div className="text-center">
             <h1 className="text-2xl font-bold">Create account</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Start your fitness journey
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">Start your fitness journey</p>
           </div>
         </div>
 

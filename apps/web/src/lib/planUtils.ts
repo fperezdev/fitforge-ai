@@ -31,20 +31,12 @@ export interface NextDay {
   template: { id: string; name: string };
 }
 
-function isDayFullyResolved(
-  statuses: string[],
-  hasWorkout: boolean,
-  hasCardio: boolean,
-): boolean {
+function isDayFullyResolved(statuses: string[], hasWorkout: boolean, hasCardio: boolean): boolean {
   if (statuses.includes("skipped") || statuses.includes("completed")) return true;
   const workoutDone =
-    !hasWorkout ||
-    statuses.includes("workout_completed") ||
-    statuses.includes("workout_skipped");
+    !hasWorkout || statuses.includes("workout_completed") || statuses.includes("workout_skipped");
   const cardioDone =
-    !hasCardio ||
-    statuses.includes("cardio_completed") ||
-    statuses.includes("cardio_skipped");
+    !hasCardio || statuses.includes("cardio_completed") || statuses.includes("cardio_skipped");
   return workoutDone && cardioDone;
 }
 
@@ -53,10 +45,7 @@ function isDayFullyResolved(
  * training day slot where the given component (workout or cardio) is not yet
  * resolved. Mirrors the backend suggestedDay logic exactly.
  */
-export function findNextDay(
-  plan: ActivePlan,
-  component: "workout" | "cardio",
-): NextDay | null {
+export function findNextDay(plan: ActivePlan, component: "workout" | "cardio"): NextDay | null {
   if (!plan.activatedAt && !plan.startDate) return null;
 
   const anchor = plan.startDate

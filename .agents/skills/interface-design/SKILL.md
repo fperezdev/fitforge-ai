@@ -18,6 +18,7 @@ compatibility: opencode
 ## When to use me
 
 Use this skill when:
+
 - Building or refactoring a screen, page, or component
 - You need guidance on layout, spacing, or visual hierarchy
 - Accessibility compliance is required

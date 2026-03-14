@@ -59,7 +59,7 @@ export function Sidebar() {
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                 isActive
                   ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )
             }
           >
@@ -88,8 +88,8 @@ export function BottomNav() {
   const menuRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
 
-  const isMoreActive = mobileMoreItems.some(
-    (item) => item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to)
+  const isMoreActive = mobileMoreItems.some((item) =>
+    item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to),
   );
 
   useEffect(() => {
@@ -115,9 +115,7 @@ export function BottomNav() {
           className={({ isActive }) =>
             cn(
               "flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium transition-colors",
-              isActive
-                ? "text-primary"
-                : "text-muted-foreground hover:text-foreground"
+              isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
             )
           }
         >
@@ -134,7 +132,7 @@ export function BottomNav() {
             "flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium transition-colors",
             moreOpen || isMoreActive
               ? "text-primary"
-              : "text-muted-foreground hover:text-foreground"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
           <Ellipsis className="h-5 w-5" />
@@ -152,9 +150,7 @@ export function BottomNav() {
                 className={({ isActive }) =>
                   cn(
                     "flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-foreground hover:bg-accent"
+                    isActive ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent",
                   )
                 }
               >

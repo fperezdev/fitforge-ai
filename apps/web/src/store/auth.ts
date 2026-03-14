@@ -10,11 +10,7 @@ interface AuthState {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (
-    email: string,
-    password: string,
-    displayName: string
-  ) => Promise<void>;
+  register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
@@ -56,9 +52,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       return;
     }
     try {
-      const profile = await api.get<{ userId: string; displayName: string }>(
-        "/me/profile"
-      );
+      const profile = await api.get<{ userId: string; displayName: string }>("/me/profile");
       // We don't have /me/user but can derive from profile
       set({ user: { id: profile.userId, email: "" }, isLoading: false });
     } catch {

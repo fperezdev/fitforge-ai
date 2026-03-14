@@ -16,6 +16,7 @@ import {
   Layers,
   Lightbulb,
   ClipboardList,
+  MessageSquare,
 } from "lucide-react";
 import { api, importPlanFromAI, streamCoach } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -891,6 +892,7 @@ export function CoachPage() {
 
   // Conversation selection
   const [activeConv, setActiveConv] = useState<string | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Chat state
   const [inputValue, setInputValue] = useState("");
@@ -1128,8 +1130,31 @@ export function CoachPage() {
 
   return (
     <div className="flex h-[calc(100vh-6rem)] gap-4">
+      {/* Mobile sidebar toggle */}
+      <button
+        onClick={() => setMobileSidebarOpen((v) => !v)}
+        className="md:hidden fixed top-4 right-4 z-50 h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shadow-lg"
+        aria-label="Toggle conversations"
+      >
+        <MessageSquare className="h-4 w-4" />
+      </button>
+
+      {/* Mobile sidebar overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 shrink-0 border border-border rounded-xl bg-card overflow-hidden">
+      <aside className={cn(
+        "flex flex-col w-64 shrink-0 border border-border rounded-xl bg-card overflow-hidden",
+        "md:flex",
+        mobileSidebarOpen
+          ? "fixed inset-y-0 left-0 z-50 rounded-none border-r border-l-0 border-y-0 shadow-xl"
+          : "hidden"
+      )}>
         <div className="p-3 border-b border-border">
           <Button
             size="sm"
@@ -1137,6 +1162,7 @@ export function CoachPage() {
             onClick={() => {
               setActiveConv(null);
               setFunnelStep("mode");
+              setMobileSidebarOpen(false);
             }}
             disabled={isCreatingConv}
           >
@@ -1153,7 +1179,7 @@ export function CoachPage() {
           {conversations.map((conv) => (
             <button
               key={conv.id}
-              onClick={() => setActiveConv(conv.id)}
+              onClick={() => { setActiveConv(conv.id); setMobileSidebarOpen(false); }}
               className={cn(
                 "w-full text-left px-3 py-2 rounded-lg text-sm transition-colors",
                 activeConv === conv.id

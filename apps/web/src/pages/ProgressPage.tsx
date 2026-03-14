@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   LineChart,
   Line,
@@ -8,9 +9,11 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
+import { Dumbbell, TrendingUp, Ruler } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 interface PR {
   id: string;
@@ -74,15 +77,49 @@ export function ProgressPage() {
     (a, b) => Number(b.value) - Number(a.value)
   );
 
+  const isEmpty = weightData.length <= 1 && latestPRs.length === 0 && measurements.length === 0;
+
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold">Progress</h1>
+      <div>
+        <h1 className="text-2xl font-bold">Progress</h1>
+        {!isEmpty && (
+          <p className="text-muted-foreground text-sm mt-1">
+            Track your strength, weight, and body measurements over time.
+          </p>
+        )}
+      </div>
+
+      {/* Empty state */}
+      {isEmpty && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="flex flex-col items-center text-center gap-4">
+              <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+                <TrendingUp className="h-7 w-7 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-lg">No progress data yet</p>
+                <p className="text-sm text-muted-foreground mt-1 max-w-xs">
+                  Start logging workouts to track your personal records, body weight, and measurements.
+                </p>
+              </div>
+              <Button asChild className="mt-2">
+                <Link to="/workout">Start a workout</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Weight chart */}
       {weightData.length > 1 && (
         <Card>
           <CardHeader>
-            <CardTitle>Body weight</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              Body weight
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
@@ -125,9 +162,13 @@ export function ProgressPage() {
       )}
 
       {/* Personal Records */}
+      {(!isEmpty || latestPRs.length > 0) && (
       <Card>
         <CardHeader>
-          <CardTitle>Personal records (estimated 1RM)</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Dumbbell className="h-4 w-4 text-muted-foreground" />
+            Personal records (estimated 1RM)
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {latestPRs.length === 0 ? (
@@ -163,12 +204,16 @@ export function ProgressPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Body measurements */}
       {measurements.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Body measurements</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Ruler className="h-4 w-4 text-muted-foreground" />
+              Body measurements
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">

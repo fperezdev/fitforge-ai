@@ -1909,19 +1909,32 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs font-medium">
-        {(["all", "strength", "cardio"] as const).map((t) => (
+      <div
+        className="inline-flex w-full rounded-lg border border-border bg-muted p-0.5 gap-0.5"
+        role="tablist"
+        aria-label="Adherence filter"
+      >
+        {(
+          [
+            { key: "all", label: "All", icon: <Layers className="h-3.5 w-3.5" /> },
+            { key: "strength", label: "Strength", icon: <Dumbbell className="h-3.5 w-3.5" /> },
+            { key: "cardio", label: "Cardio", icon: <Activity className="h-3.5 w-3.5" /> },
+          ] as const
+        ).map(({ key, label, icon }) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
             className={cn(
-              "flex-1 rounded-md py-1 capitalize transition-colors",
-              tab === t
-                ? "bg-card text-foreground shadow-sm"
+              "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+              tab === key
+                ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            {t === "all" ? "All" : t === "strength" ? "Strength" : "Cardio"}
+            {icon}
+            <span>{label}</span>
           </button>
         ))}
       </div>

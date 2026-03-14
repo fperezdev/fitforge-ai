@@ -250,7 +250,7 @@ export function DashboardPage() {
                 )
               : "—"
           }
-          sub={stats?.lastSession?.name ?? ""}
+          sub={stats?.lastSession?.name || "No sessions yet"}
           color="bg-emerald-500/10 text-emerald-500"
         />
       </div>

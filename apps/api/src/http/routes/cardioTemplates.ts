@@ -71,7 +71,7 @@ export const cardioTemplateRoutes = new Hono()
       await db.insert(cardioTemplateExercises).values(
         exs.map((e) => ({
           ...e,
-          kilometers: e.kilometers != null ? String(e.kilometers) : null,
+          kilometers: e.kilometers ?? null,
           cardioTemplateId: template.id,
         }))
       );
@@ -102,7 +102,7 @@ export const cardioTemplateRoutes = new Hono()
       await db.insert(cardioTemplateExercises).values(
         exs.map((e) => ({
           ...e,
-          kilometers: e.kilometers != null ? String(e.kilometers) : null,
+          kilometers: e.kilometers ?? null,
           cardioTemplateId: id,
         }))
       );

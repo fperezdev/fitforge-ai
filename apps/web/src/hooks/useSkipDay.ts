@@ -6,6 +6,7 @@ interface DayTarget {
   weekIndex: number;
   dayIndex: number;
   component?: "workout" | "cardio" | "all";
+  notes?: string;
 }
 
 export function useSkipDay() {
@@ -15,8 +16,8 @@ export function useSkipDay() {
   const [moved, setMoved] = useState(false);
 
   const skipMutation = useMutation({
-    mutationFn: ({ weekIndex, dayIndex, component = "all" }: DayTarget) =>
-      api.post("/plans/active/skip-day", { weekIndex, dayIndex, component }),
+    mutationFn: ({ weekIndex, dayIndex, component = "all", notes }: DayTarget) =>
+      api.post("/plans/active/skip-day", { weekIndex, dayIndex, component, notes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["activePlan"] });
       setConfirmOpen(false);

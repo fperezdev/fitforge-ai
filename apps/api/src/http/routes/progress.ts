@@ -28,23 +28,14 @@ export const progressRoutes = new Hono()
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const [recentSessions, totalSessions] = await Promise.all([
-      db.query.workoutSessions.findMany({
-        where: and(
-          eq(workoutSessions.userId, userId),
-          eq(workoutSessions.status, "completed")
-        ),
-        orderBy: [desc(workoutSessions.completedAt)],
-        limit: 50,
-      }),
-      db.query.workoutSessions.findMany({
-        where: and(
-          eq(workoutSessions.userId, userId),
-          eq(workoutSessions.status, "completed")
-        ),
-        limit: 1,
-      }),
-    ]);
+    const recentSessions = await db.query.workoutSessions.findMany({
+      where: and(
+        eq(workoutSessions.userId, userId),
+        eq(workoutSessions.status, "completed")
+      ),
+      orderBy: [desc(workoutSessions.completedAt)],
+      limit: 50,
+    });
 
     const thisWeekSessions = recentSessions.filter(
       (s) => s.completedAt && new Date(s.completedAt) >= weekAgo

@@ -355,10 +355,11 @@ export function WorkoutPage() {
           isPending={skipDay.isPending}
           isSkipError={skipDay.isSkipError}
           isMoveError={skipDay.isMoveError}
-          onSkip={() => skipDay.skip({
+          onSkip={(notes) => skipDay.skip({
             weekIndex: nextStrength.weekIndex,
             dayIndex: nextStrength.dayIndex,
             component: "workout",
+            notes,
           })}
           onMove={() => skipDay.move({
             weekIndex: nextStrength.weekIndex,

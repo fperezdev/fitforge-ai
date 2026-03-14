@@ -19,6 +19,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { api } from "@/lib/api";
+import type { WeightEntry } from "@fitforge/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,10 +30,6 @@ interface Stats {
   lastSession: { name: string; completedAt: string } | null;
 }
 
-interface WeightEntry {
-  date: string;
-  weightKg: string;
-}
 
 interface SuggestedDay {
   planDayId: string;

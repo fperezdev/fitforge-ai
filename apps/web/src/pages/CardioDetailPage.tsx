@@ -2,32 +2,18 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Activity } from "lucide-react";
 import { api } from "@/lib/api";
+import type { CardioSession } from "@fitforge/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDistance, formatDuration, formatPace } from "@/lib/utils";
 
-interface CardioSessionDetail {
-  id: string;
-  type: string;
-  status: string;
-  startedAt: string;
-  completedAt: string | null;
-  distanceMeters: number | null;
-  durationSeconds: number | null;
-  avgPaceSecondsPerKm: number | null;
-  avgHeartRate: number | null;
-  maxHeartRate: number | null;
-  caloriesBurned: number | null;
-  elevationGainMeters: number | null;
-  notes: string | null;
-}
 
 export function CardioDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const { data: session, isLoading, isError } = useQuery<CardioSessionDetail>({
+  const { data: session, isLoading, isError } = useQuery<CardioSession>({
     queryKey: ["cardio", id],
     queryFn: () => api.get(`/cardio/${id}`),
   });

@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { Dumbbell, TrendingUp, Ruler } from "lucide-react";
 import { api } from "@/lib/api";
+import type { WeightEntry } from "@fitforge/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,10 +24,6 @@ interface PR {
   exercise: { name: string; primaryMuscle: string };
 }
 
-interface WeightEntry {
-  date: string;
-  weightKg: string;
-}
 
 interface BodyMeasurement {
   id: string;

@@ -112,6 +112,10 @@ export const cardioRoutes = new Hono()
         ...data,
         startedAt: data.startedAt ? new Date(data.startedAt) : new Date(),
         completedAt: data.status === "completed" ? new Date() : null,
+        // Store plan linkage directly on the row (mirrors workout_sessions)
+        planDayId: planDayId ?? null,
+        weekIndex: weekIndex ?? null,
+        dayIndex: dayIndex ?? null,
       })
       .returning();
 
@@ -196,7 +200,7 @@ export const bodyRoutes = new Hono()
 
     const [entry] = await db
       .insert(weightEntries)
-      .values({ userId, ...data, weightKg: String(data.weightKg) })
+      .values({ userId, ...data })
       .returning();
 
     return c.json(entry, 201);
@@ -225,18 +229,18 @@ export const bodyRoutes = new Hono()
         userId,
         date: data.date,
         notes: data.notes,
-        bodyFatPercent: data.bodyFatPercent != null ? String(data.bodyFatPercent) : null,
-        chestCm: data.chestCm != null ? String(data.chestCm) : null,
-        waistCm: data.waistCm != null ? String(data.waistCm) : null,
-        hipsCm: data.hipsCm != null ? String(data.hipsCm) : null,
-        bicepLeftCm: data.bicepLeftCm != null ? String(data.bicepLeftCm) : null,
-        bicepRightCm: data.bicepRightCm != null ? String(data.bicepRightCm) : null,
-        thighLeftCm: data.thighLeftCm != null ? String(data.thighLeftCm) : null,
-        thighRightCm: data.thighRightCm != null ? String(data.thighRightCm) : null,
-        calfLeftCm: data.calfLeftCm != null ? String(data.calfLeftCm) : null,
-        calfRightCm: data.calfRightCm != null ? String(data.calfRightCm) : null,
-        shouldersCm: data.shouldersCm != null ? String(data.shouldersCm) : null,
-        neckCm: data.neckCm != null ? String(data.neckCm) : null,
+        bodyFatPercent: data.bodyFatPercent ?? null,
+        chestCm: data.chestCm ?? null,
+        waistCm: data.waistCm ?? null,
+        hipsCm: data.hipsCm ?? null,
+        bicepLeftCm: data.bicepLeftCm ?? null,
+        bicepRightCm: data.bicepRightCm ?? null,
+        thighLeftCm: data.thighLeftCm ?? null,
+        thighRightCm: data.thighRightCm ?? null,
+        calfLeftCm: data.calfLeftCm ?? null,
+        calfRightCm: data.calfRightCm ?? null,
+        shouldersCm: data.shouldersCm ?? null,
+        neckCm: data.neckCm ?? null,
       })
       .returning();
 

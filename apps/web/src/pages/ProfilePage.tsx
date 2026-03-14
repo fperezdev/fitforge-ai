@@ -11,23 +11,7 @@ import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/store/auth";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface UserProfile {
-  id: string;
-  userId: string;
-  displayName: string;
-  dateOfBirth: string | null;
-  gender: string | null;
-  heightCm: string | null;
-  unitPreference: "metric" | "imperial";
-  fitnessGoal: string | null;
-  experienceLevel: string | null;
-  injuries: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+import type { UserProfile } from "@fitforge/types";
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -196,9 +180,7 @@ export function ProfilePage() {
             <DatePicker
               label="Date of Birth"
               value={watch("dateOfBirth") ?? ""}
-              onChange={(v) =>
-                setValue("dateOfBirth", v, { shouldDirty: true })
-              }
+              onChange={(v) => setValue("dateOfBirth", v, { shouldDirty: true })}
               error={errors.dateOfBirth?.message}
               toDate={new Date()}
             />
@@ -244,9 +226,7 @@ export function ProfilePage() {
                   <button
                     key={u}
                     type="button"
-                    onClick={() =>
-                      setValue("unitPreference", u, { shouldDirty: true })
-                    }
+                    onClick={() => setValue("unitPreference", u, { shouldDirty: true })}
                     className={[
                       "flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors",
                       unitPref === u
@@ -290,9 +270,7 @@ export function ProfilePage() {
               label="Experience Level"
               id="experienceLevel"
               value={watch("experienceLevel") ?? ""}
-              onChange={(v) =>
-                setValue("experienceLevel", v, { shouldDirty: true })
-              }
+              onChange={(v) => setValue("experienceLevel", v, { shouldDirty: true })}
               options={[
                 { value: "beginner", label: "Beginner (< 1 year)" },
                 { value: "intermediate", label: "Intermediate (1–3 years)" },
@@ -330,7 +308,8 @@ export function ProfilePage() {
         </Card>
 
         {/* Save */}
-        <div className="flex items-center justify-between">          {mutation.isError && (
+        <div className="flex items-center justify-between">
+          {mutation.isError && (
             <p className="text-sm text-destructive">
               {(mutation.error as Error).message}
             </p>

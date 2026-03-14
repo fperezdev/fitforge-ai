@@ -297,7 +297,6 @@ export const sessionRoutes = new Hono()
         .values({
           exerciseEntryId: entryId,
           ...data,
-          weightKg: data.weightKg != null ? String(data.weightKg) : null,
         })
         .returning();
 
@@ -316,14 +315,14 @@ export const sessionRoutes = new Hono()
           ),
         });
 
-        if (!existing || Number(existing.value) < estimated1rm) {
+        if (!existing || existing.value < estimated1rm) {
           await db
             .insert(personalRecords)
             .values({
               userId,
               exerciseId: entry.exerciseId,
               type: "estimated_1rm",
-              value: String(Math.round(estimated1rm * 10) / 10),
+              value: Math.round(estimated1rm * 10) / 10,
               workoutSessionId: id,
               previousValue: existing?.value ?? null,
               achievedAt: new Date(),
@@ -347,10 +346,7 @@ export const sessionRoutes = new Hono()
 
       const [updated] = await db
         .update(exerciseSets)
-        .set({
-          ...data,
-          weightKg: data.weightKg != null ? String(data.weightKg) : data.weightKg,
-        })
+        .set({ ...data, updatedAt: new Date() } as any)
         .where(eq(exerciseSets.id, setId))
         .returning();
 

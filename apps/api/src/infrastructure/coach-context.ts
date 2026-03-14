@@ -9,7 +9,6 @@ import {
   cardioSessions,
   personalRecords,
   weightEntries,
-  bodyGoals,
   coachMessages,
   coachConversations,
 } from "@fitforge/db";
@@ -21,7 +20,7 @@ export async function buildCoachContext(
 ): Promise<CoachContext> {
   const db = getDb();
 
-  const [conversation, profile, sessions, cardio, prs, weights, goals, history, allExercises] =
+  const [conversation, profile, sessions, cardio, prs, weights, history, allExercises] =
     await Promise.all([
       // Conversation (for mode)
       db.query.coachConversations.findFirst({
@@ -79,14 +78,6 @@ export async function buildCoachContext(
         limit: 30,
       }),
 
-      // Active goals
-      db.query.bodyGoals.findMany({
-        where: and(
-          eq(bodyGoals.userId, userId),
-          eq(bodyGoals.status, "active")
-        ),
-      }),
-
       // Conversation history
       db.query.coachMessages.findMany({
         where: eq(coachMessages.conversationId, conversationId),
@@ -105,44 +96,44 @@ export async function buildCoachContext(
     profile: profile
       ? {
           ...profile,
-          heightCm: profile.heightCm ? Number(profile.heightCm) : null,
           unitPreference: (profile.unitPreference ?? "metric") as
             | "metric"
             | "imperial",
           injuries: profile.injuries ?? null,
+          createdAt: profile.createdAt.toISOString(),
+          updatedAt: profile.updatedAt.toISOString(),
         }
       : null,
-    recentSessions: sessions.map((s: any) => ({
+    recentSessions: sessions.map((s) => ({
       ...s,
-      entries: s.exerciseEntries?.map((e: any) => ({
+      startedAt: s.startedAt.toISOString(),
+      completedAt: s.completedAt?.toISOString() ?? null,
+      status: s.status as "in_progress" | "completed" | "cancelled",
+      entries: s.exerciseEntries?.map((e) => ({
         ...e,
-        sets: e.sets?.map((set: any) => ({
+        sets: e.sets.map((set) => ({
           ...set,
-          weightKg: set.weightKg ? Number(set.weightKg) : null,
+          type: set.type as "warmup" | "working" | "dropset" | "failure",
         })),
       })),
     })),
-    recentCardio: cardio as any[],
-    personalRecords: prs.map((pr: any) => ({
+    recentCardio: cardio.map((c) => ({
+      ...c,
+      startedAt: c.startedAt.toISOString(),
+      completedAt: c.completedAt?.toISOString() ?? null,
+      status: c.status as "in_progress" | "completed" | "cancelled",
+    })),
+    personalRecords: prs.map((pr) => ({
       ...pr,
-      value: Number(pr.value),
-      previousValue: pr.previousValue ? Number(pr.previousValue) : null,
+      achievedAt: pr.achievedAt.toISOString(),
+      type: pr.type as "max_weight" | "max_reps" | "estimated_1rm",
+      exercise: pr.exercise,
     })),
-    weightTrend: weights
-      .map((w: any) => ({
-        ...w,
-        weightKg: Number(w.weightKg),
-      }))
-      .reverse(),
-    activeGoals: goals.map((g: any) => ({
-      ...g,
-      targetValue: Number(g.targetValue),
-      currentValue: Number(g.currentValue),
-      status: g.status as "active" | "completed" | "cancelled",
-    })),
-    conversationHistory: history.reverse().map((m: any) => ({
+    weightTrend: weights.slice().reverse(),
+    conversationHistory: history.reverse().map((m) => ({
       ...m,
       role: m.role as "user" | "assistant",
+      createdAt: m.createdAt.toISOString(),
     })),
     exercises: allExercises,
   };

@@ -197,13 +197,32 @@ async function createCardioTemplate(
         cardioTemplateId: tmpl.id,
         name: ex.name,
         zone: ex.zone ?? null,
-        kilometers: ex.kilometers != null ? String(ex.kilometers) : null,
+        kilometers: ex.kilometers ?? null,
         order: i + 1,
       }))
     );
   }
 
   return tmpl.id;
+}
+
+// ─── Plan helper utilities ─────────────────────────────────────────────────────
+
+/** Resolve a (0-based weekIndex, 0-based dayIndex) pair to the matching plan day row. */
+function resolvePlanDay<D extends { dayNumber: number }>(
+  microcycles: Array<{ position: number; days: D[] }>,
+  weekIndex: number,
+  dayIndex: number,
+): D | undefined {
+  const week = microcycles.find((mc) => mc.position === weekIndex + 1);
+  return week?.days.find((d) => d.dayNumber === dayIndex + 1);
+}
+
+/** Compute the UTC anchor date for a plan (startDate takes priority over activatedAt). */
+function getPlanAnchor(plan: { startDate: string | null; activatedAt: Date | null }): Date | null {
+  if (plan.startDate) return new Date(plan.startDate + "T00:00:00Z");
+  if (plan.activatedAt) return new Date(plan.activatedAt);
+  return null;
 }
 
 export const planRoutes = new Hono()
@@ -262,9 +281,7 @@ export const planRoutes = new Hono()
     if (plan.activatedAt) {
       const msPerDay = 86_400_000;
       // Use startDate (user-chosen Day 1) when available; fall back to activatedAt for legacy rows
-      const anchor = plan.startDate
-        ? new Date(plan.startDate + "T00:00:00Z")
-        : new Date(plan.activatedAt);
+      const anchor = getPlanAnchor(plan)!;
       const daysSince = Math.floor((Date.now() - anchor.getTime()) / msPerDay);
       const totalDays = plan.microcycleLength * plan.mesocycleLength;
 
@@ -305,8 +322,7 @@ export const planRoutes = new Hono()
         const dayIndex = pos % plan.microcycleLength;
         const key = `${weekIndex}:${dayIndex}`;
 
-        const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
-        const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
+        const day = resolvePlanDay(plan.microcycles, weekIndex, dayIndex);
 
         if (!day) { offset++; continue; }
 
@@ -375,9 +391,7 @@ export const planRoutes = new Hono()
 
     if (!plan) return c.json({ error: "No active plan" }, 404);
 
-    const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
-    const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
-
+    const day = resolvePlanDay(plan.microcycles, weekIndex, dayIndex);
     if (!day) return c.json({ error: "Plan day not found" }, 404);
 
     // Determine which status(es) to write
@@ -423,14 +437,11 @@ export const planRoutes = new Hono()
 
     if (!plan) return c.json({ error: "No active plan" }, 404);
 
-    const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
-    const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
+    const day = resolvePlanDay(plan.microcycles, weekIndex, dayIndex);
     if (!day) return c.json({ error: "Plan day not found" }, 404);
 
     // Shift startDate back by 1 day so every future slot moves forward by 1
-    const currentAnchor = plan.startDate
-      ? new Date(plan.startDate + "T00:00:00Z")
-      : new Date(plan.activatedAt!);
+    const currentAnchor = getPlanAnchor(plan)!;
     const newAnchor = new Date(currentAnchor.getTime() - 86_400_000);
     const newStartDate = newAnchor.toISOString().slice(0, 10);
 
@@ -600,7 +611,7 @@ export const planRoutes = new Hono()
             if (!s.completed) continue;
             totalSets++;
             totalReps += s.reps ?? 0;
-            totalWeightKg += (s.reps ?? 0) * Number(s.weightKg ?? 0);
+            totalWeightKg += (s.reps ?? 0) * (s.weightKg ?? 0);
           }
         }
       }
@@ -812,7 +823,7 @@ export const planRoutes = new Hono()
             if (!s.completed) continue;
             totalSets++;
             totalReps += s.reps ?? 0;
-            totalWeightKg += (s.reps ?? 0) * Number(s.weightKg ?? 0);
+            totalWeightKg += (s.reps ?? 0) * (s.weightKg ?? 0);
           }
         }
       }

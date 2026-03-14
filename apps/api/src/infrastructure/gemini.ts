@@ -40,19 +40,6 @@ function formatContext(ctx: CoachContext): string {
 - Trend (${ctx.weightTrend.length} days): ${Number(change) >= 0 ? "+" : ""}${change} kg`);
   }
 
-  if (ctx.activeGoals.length > 0) {
-    parts.push(
-      `## Active Goals\n` +
-        ctx.activeGoals
-          .map(
-            (g) =>
-              `- ${g.type}: ${g.currentValue} → ${g.targetValue} ${g.unit}` +
-              (g.targetDate ? ` (by ${g.targetDate})` : "")
-          )
-          .join("\n")
-    );
-  }
-
   if (ctx.personalRecords.length > 0) {
     parts.push(
       `## Personal Records (estimated 1RM)\n` +

@@ -19,6 +19,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { api, importPlanFromAI, streamCoach } from "@/lib/api";
+import type { UserProfile, WeightEntry } from "@fitforge/types";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -41,20 +42,7 @@ interface Message {
   createdAt: string;
 }
 
-interface UserProfile {
-  displayName: string;
-  dateOfBirth: string | null;
-  gender: string | null;
-  heightCm: string | number | null;
-  fitnessGoal: string | null;
-  experienceLevel: string | null;
-}
 
-interface WeightEntry {
-  id: string;
-  weightKg: string | number;
-  date: string;
-}
 
 // ─── Plan helpers ─────────────────────────────────────────────────────────────
 

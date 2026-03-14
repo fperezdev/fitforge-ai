@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { userProfiles, bodyGoals } from "@fitforge/db";
+import { userProfiles } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
 import { authMiddleware, getUserId } from "../middleware/auth.js";
 
@@ -18,15 +18,6 @@ const updateProfileSchema = z.object({
     .optional()
     .nullable(),
   injuries: z.string().optional().nullable(),
-});
-
-const createGoalSchema = z.object({
-  type: z.string(),
-  targetValue: z.number(),
-  currentValue: z.number(),
-  unit: z.string(),
-  startDate: z.string().date(),
-  targetDate: z.string().date().optional().nullable(),
 });
 
 export const profileRoutes = new Hono()
@@ -51,71 +42,10 @@ export const profileRoutes = new Hono()
       .update(userProfiles)
       .set({
         ...updates,
-        heightCm: updates.heightCm != null ? String(updates.heightCm) : updates.heightCm,
         updatedAt: new Date(),
       })
       .where(eq(userProfiles.userId, userId))
       .returning();
 
     return c.json(updated);
-  })
-
-  .get("/goals", async (c) => {
-    const userId = getUserId(c);
-    const db = getDb();
-    const goals = await db.query.bodyGoals.findMany({
-      where: eq(bodyGoals.userId, userId),
-    });
-    return c.json(goals);
-  })
-
-  .post("/goals", zValidator("json", createGoalSchema), async (c) => {
-    const userId = getUserId(c);
-    const data = c.req.valid("json");
-    const db = getDb();
-
-    const [goal] = await db
-      .insert(bodyGoals)
-      .values({
-        ...data,
-        userId,
-        targetValue: String(data.targetValue),
-        currentValue: String(data.currentValue),
-      })
-      .returning();
-
-    return c.json(goal, 201);
-  })
-
-  .patch(
-    "/goals/:id",
-    zValidator(
-      "json",
-      z.object({
-        currentValue: z.number().optional(),
-        targetValue: z.number().optional(),
-        targetDate: z.string().date().optional().nullable(),
-        status: z.enum(["active", "completed", "cancelled"]).optional(),
-      })
-    ),
-    async (c) => {
-      const userId = getUserId(c);
-      const { id } = c.req.param();
-      const updates = c.req.valid("json");
-      const db = getDb();
-
-      const [updated] = await db
-        .update(bodyGoals)
-        .set({
-          ...updates,
-          targetValue: updates.targetValue != null ? String(updates.targetValue) : undefined,
-          currentValue: updates.currentValue != null ? String(updates.currentValue) : undefined,
-          updatedAt: new Date(),
-        })
-        .where(eq(bodyGoals.id, id))
-        .returning();
-
-      if (!updated) return c.json({ error: "Goal not found" }, 404);
-      return c.json(updated);
-    }
-  );
+  });

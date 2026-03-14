@@ -15,13 +15,3 @@ export function getSupabaseClient(): SupabaseClient {
   }
   return _client;
 }
-
-// Create a client using the user's JWT (for RLS-aware queries if needed)
-export function getUserSupabaseClient(accessToken: string): SupabaseClient {
-  const url = process.env.SUPABASE_URL!;
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY!;
-  return createClient(url, key, {
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}

@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ChevronDown, Dumbbell } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, ChevronDown, Dumbbell, Pencil, Check, X } from "lucide-react";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -34,11 +34,22 @@ interface SessionDetail {
 export function WorkoutDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [notesValue, setNotesValue] = useState("");
 
   const { data: session, isLoading, isError } = useQuery<SessionDetail>({
     queryKey: ["session", id],
     queryFn: () => api.get(`/sessions/${id}`),
+  });
+
+  const notesMutation = useMutation({
+    mutationFn: (notes: string | null) => api.patch<SessionDetail>(`/sessions/${id}`, { notes }),
+    onSuccess: (updated: SessionDetail) => {
+      qc.setQueryData(["session", id], updated);
+      setEditingNotes(false);
+    },
   });
 
   if (isLoading) {
@@ -120,14 +131,61 @@ export function WorkoutDetailPage() {
       </div>
 
       {/* Notes */}
-      {session.notes && (
-        <Card>
-          <CardContent className="py-4">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Notes</p>
-            <p className="text-sm">{session.notes}</p>
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Notes</p>
+            {!editingNotes && (
+              <button
+                type="button"
+                aria-label="Edit notes"
+                onClick={() => { setNotesValue(session.notes ?? ""); setEditingNotes(true); }}
+                className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {editingNotes ? (
+            <div className="space-y-2">
+              <textarea
+                autoFocus
+                value={notesValue}
+                onChange={(e) => setNotesValue(e.target.value)}
+                rows={3}
+                placeholder="Add session notes…"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              />
+              <div className="flex items-center gap-2 justify-end">
+                {notesMutation.isError && (
+                  <p className="text-xs text-destructive mr-auto">Failed to save</p>
+                )}
+                <button
+                  type="button"
+                  aria-label="Cancel"
+                  onClick={() => setEditingNotes(false)}
+                  className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Save notes"
+                  disabled={notesMutation.isPending}
+                  onClick={() => notesMutation.mutate(notesValue || null)}
+                  className="rounded p-1 text-muted-foreground hover:text-emerald-600 transition-colors disabled:opacity-50"
+                >
+                  <Check className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {session.notes ?? <span className="italic">No notes</span>}
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Exercises */}
       {session.exerciseEntries.length === 0 ? (

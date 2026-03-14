@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Activity, SkipForward, CheckCircle2, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
+import type { CardioSession } from "@fitforge/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,18 +17,6 @@ import { useSkipDay } from "@/hooks/useSkipDay";
 import { formatDistance, formatDuration, formatPace } from "@/lib/utils";
 import { type ActivePlan, findNextDay, getDateLabel } from "@/lib/planUtils";
 
-interface CardioSession {
-  id: string;
-  type: string;
-  status: string;
-  startedAt: string;
-  completedAt: string | null;
-  distanceMeters: number | null;
-  durationSeconds: number | null;
-  avgPaceSecondsPerKm: number | null;
-  avgHeartRate: number | null;
-  caloriesBurned: number | null;
-}
 
 const nanToUndef = (v: unknown) =>
   typeof v === "number" && isNaN(v) ? undefined : v;
@@ -281,11 +270,12 @@ export function CardioPage() {
               isPending={skipDay.isPending}
               isSkipError={skipDay.isSkipError}
               isMoveError={skipDay.isMoveError}
-              onSkip={() =>
+              onSkip={(notes) =>
                 skipDay.skip({
                   weekIndex: nextCardio.weekIndex,
                   dayIndex: nextCardio.dayIndex,
                   component: "cardio",
+                  notes,
                 })
               }
               onMove={() =>

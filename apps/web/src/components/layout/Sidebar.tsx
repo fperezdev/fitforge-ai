@@ -114,7 +114,7 @@ export function BottomNav() {
           end={to === "/"}
           className={({ isActive }) =>
             cn(
-              "flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium transition-colors",
+              "flex flex-1 flex-col items-center gap-1 py-2 text-base scale-75 origin-bottom font-medium transition-colors",
               isActive ? "text-primary" : "text-muted-foreground hover:text-foreground",
             )
           }
@@ -129,7 +129,7 @@ export function BottomNav() {
         <button
           onClick={() => setMoreOpen((v) => !v)}
           className={cn(
-            "flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium transition-colors",
+            "flex flex-1 flex-col items-center gap-1 py-2 text-base scale-75 origin-bottom font-medium transition-colors",
             moreOpen || isMoreActive
               ? "text-primary"
               : "text-muted-foreground hover:text-foreground",

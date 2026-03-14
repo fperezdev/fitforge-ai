@@ -15,6 +15,27 @@
       "when": 1773247426000,
       "tag": "0001_remove_unused",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1773247426001,
+      "tag": "0002_schema_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1773247426002,
+      "tag": "0003_plan_unique_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1773247426003,
+      "tag": "0004_cardio_plan_linkage",
+      "breakpoints": true
     }
   ]
 }

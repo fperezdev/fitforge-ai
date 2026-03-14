@@ -6,7 +6,7 @@ services:
     region: oregon
     plan: free
     rootDir: apps/api
-    buildCommand: cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @fitforge/db build && pnpm --filter @fitforge/api build
+    buildCommand: cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @fitforge/db build && pnpm --filter @fitforge/api build
     startCommand: node dist/index.js
     envVars:
       - key: NODE_ENV
@@ -30,9 +30,8 @@ services:
   - type: web
     name: fitforge-web
     runtime: static
-    rootDir: apps/web
-    buildCommand: cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @fitforge/web build
-    staticPublishPath: dist
+    buildCommand: npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @fitforge/web build
+    staticPublishPath: apps/web/dist
     envVars:
       - key: VITE_API_URL
         sync: false

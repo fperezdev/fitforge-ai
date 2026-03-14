@@ -294,7 +294,11 @@ export const sessionRoutes = new Hono()
 
       const [set] = await db
         .insert(exerciseSets)
-        .values({ exerciseEntryId: entryId, ...data })
+        .values({
+          exerciseEntryId: entryId,
+          ...data,
+          weightKg: data.weightKg != null ? String(data.weightKg) : null,
+        })
         .returning();
 
       // Check for personal record (estimated 1RM via Epley formula)
@@ -343,7 +347,10 @@ export const sessionRoutes = new Hono()
 
       const [updated] = await db
         .update(exerciseSets)
-        .set(data)
+        .set({
+          ...data,
+          weightKg: data.weightKg != null ? String(data.weightKg) : data.weightKg,
+        })
         .where(eq(exerciseSets.id, setId))
         .returning();
 

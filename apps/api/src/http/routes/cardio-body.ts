@@ -154,9 +154,14 @@ export const cardioRoutes = new Hono()
       const { splits, planDayId: _pd, weekIndex: _wi, dayIndex: _di, ...data } = c.req.valid("json");
       const db = getDb();
 
+      const { startedAt, ...rest } = data;
       const [updated] = await db
         .update(cardioSessions)
-        .set({ ...data, updatedAt: new Date() })
+        .set({
+          ...rest,
+          ...(startedAt != null ? { startedAt: new Date(startedAt) } : {}),
+          updatedAt: new Date(),
+        })
         .where(
           and(eq(cardioSessions.id, id), eq(cardioSessions.userId, userId))
         )
@@ -191,7 +196,7 @@ export const bodyRoutes = new Hono()
 
     const [entry] = await db
       .insert(weightEntries)
-      .values({ userId, ...data })
+      .values({ userId, ...data, weightKg: String(data.weightKg) })
       .returning();
 
     return c.json(entry, 201);
@@ -216,7 +221,23 @@ export const bodyRoutes = new Hono()
 
     const [measurement] = await db
       .insert(bodyMeasurements)
-      .values({ userId, ...data })
+      .values({
+        userId,
+        date: data.date,
+        notes: data.notes,
+        bodyFatPercent: data.bodyFatPercent != null ? String(data.bodyFatPercent) : null,
+        chestCm: data.chestCm != null ? String(data.chestCm) : null,
+        waistCm: data.waistCm != null ? String(data.waistCm) : null,
+        hipsCm: data.hipsCm != null ? String(data.hipsCm) : null,
+        bicepLeftCm: data.bicepLeftCm != null ? String(data.bicepLeftCm) : null,
+        bicepRightCm: data.bicepRightCm != null ? String(data.bicepRightCm) : null,
+        thighLeftCm: data.thighLeftCm != null ? String(data.thighLeftCm) : null,
+        thighRightCm: data.thighRightCm != null ? String(data.thighRightCm) : null,
+        calfLeftCm: data.calfLeftCm != null ? String(data.calfLeftCm) : null,
+        calfRightCm: data.calfRightCm != null ? String(data.calfRightCm) : null,
+        shouldersCm: data.shouldersCm != null ? String(data.shouldersCm) : null,
+        neckCm: data.neckCm != null ? String(data.neckCm) : null,
+      })
       .returning();
 
     return c.json(measurement, 201);

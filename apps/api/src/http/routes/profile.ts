@@ -49,7 +49,11 @@ export const profileRoutes = new Hono()
 
     const [updated] = await db
       .update(userProfiles)
-      .set({ ...updates, updatedAt: new Date() })
+      .set({
+        ...updates,
+        heightCm: updates.heightCm != null ? String(updates.heightCm) : updates.heightCm,
+        updatedAt: new Date(),
+      })
       .where(eq(userProfiles.userId, userId))
       .returning();
 
@@ -72,7 +76,12 @@ export const profileRoutes = new Hono()
 
     const [goal] = await db
       .insert(bodyGoals)
-      .values({ ...data, userId })
+      .values({
+        ...data,
+        userId,
+        targetValue: String(data.targetValue),
+        currentValue: String(data.currentValue),
+      })
       .returning();
 
     return c.json(goal, 201);
@@ -97,7 +106,12 @@ export const profileRoutes = new Hono()
 
       const [updated] = await db
         .update(bodyGoals)
-        .set({ ...updates, updatedAt: new Date() })
+        .set({
+          ...updates,
+          targetValue: updates.targetValue != null ? String(updates.targetValue) : undefined,
+          currentValue: updates.currentValue != null ? String(updates.currentValue) : undefined,
+          updatedAt: new Date(),
+        })
         .where(eq(bodyGoals.id, id))
         .returning();
 

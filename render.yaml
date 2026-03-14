@@ -30,8 +30,6 @@ services:
   - type: web
     name: fitforge-web
     runtime: static
-    region: oregon
-    plan: free
     rootDir: apps/web
     buildCommand: cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @fitforge/web build
     staticPublishPath: dist

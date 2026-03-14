@@ -10,6 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { SkipDayModal } from "@/components/ui/skip-day-modal";
 import { useSkipDay } from "@/hooks/useSkipDay";
 import { formatDuration } from "@/lib/utils";
+import { type ActivePlan, findNextDay, getDateLabel } from "@/lib/planUtils";
 
 interface Session {
   id: string;
@@ -19,91 +20,6 @@ interface Session {
   completedAt: string | null;
 }
 
-interface PlanDay {
-  id: string;
-  dayNumber: number;
-  type: string;
-  workoutTemplate: { id: string; name: string } | null;
-  cardioTemplate: { id: string; name: string } | null;
-}
-
-interface Microcycle {
-  position: number; // 1-based
-  days: PlanDay[];
-}
-
-interface ActivePlan {
-  id: string;
-  name: string;
-  microcycleLength: number;
-  mesocycleLength: number;
-  startDate: string | null;
-  activatedAt: string | null;
-  microcycles: Microcycle[];
-}
-
-// Resolve a scheduled date for a zero-based (weekIndex, dayIndex) slot
-function slotDate(plan: ActivePlan, weekIndex: number, dayIndex: number): Date {
-  const anchor = plan.startDate
-    ? new Date(plan.startDate + "T00:00:00")
-    : new Date(plan.activatedAt!);
-  const pos = weekIndex * plan.microcycleLength + dayIndex;
-  const d = new Date(anchor);
-  d.setDate(d.getDate() + pos);
-  return d;
-}
-
-function getDateLabel(date: Date): { label: string; isToday: boolean } {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((date.getTime() - today.getTime()) / 86_400_000);
-  const formatted = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  if (diffDays === 0) return { label: `Today · ${formatted}`, isToday: true };
-  if (diffDays === 1) return { label: `Tomorrow · ${formatted}`, isToday: false };
-  return { label: formatted, isToday: false };
-}
-
-interface NextDay {
-  planDayId: string;
-  weekIndex: number;
-  dayIndex: number;
-  date: Date;
-  workoutTemplate: { id: string; name: string };
-}
-
-// Find the next calendar day (from today) that has a workout template
-function findNextStrengthDay(plan: ActivePlan): NextDay | null {
-  if (!plan.activatedAt && !plan.startDate) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const totalDays = plan.microcycleLength * plan.mesocycleLength;
-
-  for (let offset = 0; offset < totalDays; offset++) {
-    const anchor = plan.startDate
-      ? new Date(plan.startDate + "T00:00:00")
-      : new Date(plan.activatedAt!);
-    anchor.setHours(0, 0, 0, 0);
-    const msPerDay = 86_400_000;
-    const daysSinceAnchor = Math.floor((today.getTime() - anchor.getTime()) / msPerDay);
-    const pos = daysSinceAnchor + offset;
-    const weekIndex = Math.floor(pos / plan.microcycleLength) % plan.mesocycleLength;
-    const dayIndex = pos % plan.microcycleLength;
-
-    const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
-    const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
-    if (!day || day.type !== "training" || !day.workoutTemplate) continue;
-
-    return {
-      planDayId: day.id,
-      weekIndex,
-      dayIndex,
-      date: slotDate(plan, weekIndex, dayIndex),
-      workoutTemplate: day.workoutTemplate,
-    };
-  }
-  return null;
-}
 
 export function WorkoutPage() {
   const navigate = useNavigate();
@@ -117,12 +33,12 @@ export function WorkoutPage() {
   const [pendingWeekIndex, setPendingWeekIndex] = useState<number | null>(null);
   const [pendingDayIndex, setPendingDayIndex] = useState<number | null>(null);
 
-  const { data: sessions = [] } = useQuery<Session[]>({
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery<Session[]>({
     queryKey: ["sessions"],
     queryFn: () => api.get("/sessions?limit=20"),
   });
 
-  const { data: activePlan } = useQuery<ActivePlan | null>({
+  const { data: activePlan, isLoading: planLoading } = useQuery<ActivePlan | null>({
     queryKey: ["activePlan"],
     queryFn: () => api.get("/plans/active"),
   });
@@ -164,15 +80,23 @@ export function WorkoutPage() {
   const skipDay = useSkipDay();
 
   const activeSession = sessions.find((s) => s.status === "in_progress");
-  const nextStrength = activePlan ? findNextStrengthDay(activePlan) : null;
+  const nextStrength = activePlan ? findNextDay(activePlan, "workout") : null;
   const { label: dateLabel, isToday } = nextStrength
-    ? getDateLabel(new Date(nextStrength.date))
+    ? getDateLabel(nextStrength.date)
     : { label: "", isToday: false };
+
+  if (sessionsLoading || planLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   function openConfirmFromSuggestion() {
     if (!nextStrength) return;
-    setPendingTemplateId(nextStrength.workoutTemplate.id);
-    setPendingTemplateName(nextStrength.workoutTemplate.name);
+    setPendingTemplateId(nextStrength.template.id);
+    setPendingTemplateName(nextStrength.template.name);
     setPendingPlanDayId(nextStrength.planDayId);
     setPendingWeekIndex(nextStrength.weekIndex);
     setPendingDayIndex(nextStrength.dayIndex);
@@ -288,7 +212,7 @@ export function WorkoutPage() {
                         <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
                           {isToday ? "Today's plan" : "Upcoming"} · {activePlan.name}
                         </p>
-                        <p className="font-medium truncate">{nextStrength.workoutTemplate.name}</p>
+                        <p className="font-medium truncate">{nextStrength.template.name}</p>
                         <p className="text-xs text-muted-foreground">
                           Week {nextStrength.weekIndex + 1} · Day {nextStrength.dayIndex + 1}
                           <span className="ml-2">· {dateLabel}</span>
@@ -425,7 +349,7 @@ export function WorkoutPage() {
       {nextStrength && isToday && (
         <SkipDayModal
           open={skipDay.confirmOpen}
-          workoutName={nextStrength.workoutTemplate.name}
+          workoutName={nextStrength.template.name}
           weekIndex={nextStrength.weekIndex}
           dayIndex={nextStrength.dayIndex}
           isPending={skipDay.isPending}

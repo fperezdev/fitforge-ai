@@ -935,7 +935,7 @@ export function CoachPage() {
     !!profile.fitnessGoal &&
     !!profile.experienceLevel;
 
-  const { data: conversations = [] } = useQuery<Conversation[]>({
+  const { data: conversations = [], isLoading: isConversationsLoading } = useQuery<Conversation[]>({
     queryKey: ["conversations"],
     queryFn: () => api.get("/coach/conversations"),
   });
@@ -946,7 +946,7 @@ export function CoachPage() {
     enabled: !!activeConv,
   });
 
-  const { data: plan = null } = useQuery<{ id: string } | null>({
+  const { data: plan = null, isLoading: isPlanLoading } = useQuery<{ id: string } | null>({
     queryKey: ["plans"],
     queryFn: () => api.get("/plans"),
   });
@@ -1193,7 +1193,7 @@ export function CoachPage() {
       {/* Main chat area */}
       <div className="flex-1 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
         {/* Profile gate */}
-        {isProfileLoading || isWeightLoading ? (
+        {isProfileLoading || isWeightLoading || isConversationsLoading || isPlanLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>

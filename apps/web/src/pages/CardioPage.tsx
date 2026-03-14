@@ -14,6 +14,7 @@ import { Modal } from "@/components/ui/modal";
 import { SkipDayModal } from "@/components/ui/skip-day-modal";
 import { useSkipDay } from "@/hooks/useSkipDay";
 import { formatDistance, formatDuration, formatPace } from "@/lib/utils";
+import { type ActivePlan, findNextDay, getDateLabel } from "@/lib/planUtils";
 
 interface CardioSession {
   id: string;
@@ -63,82 +64,6 @@ function toApiPayload(data: CardioForm) {
   };
 }
 
-interface PlanDay {
-  id: string;
-  dayNumber: number;
-  type: string;
-  workoutTemplate: { id: string; name: string } | null;
-  cardioTemplate: { id: string; name: string } | null;
-}
-
-interface Microcycle {
-  position: number; // 1-based
-  days: PlanDay[];
-}
-
-interface ActivePlan {
-  id: string;
-  name: string;
-  microcycleLength: number;
-  mesocycleLength: number;
-  startDate: string | null;
-  activatedAt: string | null;
-  microcycles: Microcycle[];
-}
-
-function getDateLabel(date: Date): { label: string; isToday: boolean } {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  date.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((date.getTime() - today.getTime()) / 86_400_000);
-  const formatted = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  if (diffDays === 0) return { label: `Today · ${formatted}`, isToday: true };
-  if (diffDays === 1) return { label: `Tomorrow · ${formatted}`, isToday: false };
-  return { label: formatted, isToday: false };
-}
-
-interface NextDay {
-  planDayId: string;
-  weekIndex: number;
-  dayIndex: number;
-  date: Date;
-  cardioTemplate: { id: string; name: string };
-}
-
-function findNextCardioDay(plan: ActivePlan): NextDay | null {
-  if (!plan.activatedAt && !plan.startDate) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const anchor = plan.startDate
-    ? new Date(plan.startDate + "T00:00:00")
-    : new Date(plan.activatedAt!);
-  anchor.setHours(0, 0, 0, 0);
-  const totalDays = plan.microcycleLength * plan.mesocycleLength;
-  const msPerDay = 86_400_000;
-  const daysSinceAnchor = Math.floor((today.getTime() - anchor.getTime()) / msPerDay);
-
-  for (let offset = 0; offset < totalDays; offset++) {
-    const pos = daysSinceAnchor + offset;
-    const weekIndex = Math.floor(pos / plan.microcycleLength) % plan.mesocycleLength;
-    const dayIndex = pos % plan.microcycleLength;
-
-    const week = plan.microcycles.find((mc) => mc.position === weekIndex + 1);
-    const day = week?.days.find((d) => d.dayNumber === dayIndex + 1);
-    if (!day || day.type !== "training" || !day.cardioTemplate) continue;
-
-    const slotD = new Date(anchor);
-    slotD.setDate(slotD.getDate() + pos);
-
-    return {
-      planDayId: day.id,
-      weekIndex,
-      dayIndex,
-      date: slotD,
-      cardioTemplate: day.cardioTemplate,
-    };
-  }
-  return null;
-}
 
 export function CardioPage() {
   const queryClient = useQueryClient();
@@ -148,7 +73,7 @@ export function CardioPage() {
   const [planWeekIndex, setPlanWeekIndex] = useState<number | null>(null);
   const [planDayIndex, setPlanDayIndex] = useState<number | null>(null);
 
-  const { data: sessions = [] } = useQuery<CardioSession[]>({
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery<CardioSession[]>({
     queryKey: ["cardio"],
     queryFn: () => api.get("/cardio?limit=30"),
   });
@@ -187,10 +112,18 @@ export function CardioPage() {
     },
   });
 
-  const nextCardio = activePlan ? findNextCardioDay(activePlan) : null;
+  const nextCardio = activePlan ? findNextDay(activePlan, "cardio") : null;
   const { label: dateLabel, isToday } = nextCardio
-    ? getDateLabel(new Date(nextCardio.date))
+    ? getDateLabel(nextCardio.date)
     : { label: "", isToday: false };
+
+  if (sessionsLoading || planLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   function openFromSuggestion() {
     if (!nextCardio) return;
@@ -218,7 +151,7 @@ export function CardioPage() {
       </div>
 
       {/* No active plan banner */}
-      {!planLoading && activePlan === null && (
+      {activePlan === null && (
         <Card className="border-dashed">
           <CardContent className="py-8 flex flex-col items-center gap-3 text-center">
             <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
@@ -306,7 +239,7 @@ export function CardioPage() {
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
                         {isToday ? "Today's plan" : "Upcoming"} · {activePlan.name}
                       </p>
-                      <p className="font-medium truncate">{nextCardio.cardioTemplate.name}</p>
+                      <p className="font-medium truncate">{nextCardio.template.name}</p>
                       <p className="text-xs text-muted-foreground">
                         Week {nextCardio.weekIndex + 1} · Day {nextCardio.dayIndex + 1}
                         <span className="ml-2">· {dateLabel}</span>
@@ -342,7 +275,7 @@ export function CardioPage() {
           {nextCardio && isToday && (
             <SkipDayModal
               open={skipDay.confirmOpen}
-              workoutName={nextCardio.cardioTemplate.name}
+              workoutName={nextCardio.template.name}
               weekIndex={nextCardio.weekIndex}
               dayIndex={nextCardio.dayIndex}
               isPending={skipDay.isPending}

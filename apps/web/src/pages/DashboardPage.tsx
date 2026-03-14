@@ -176,20 +176,29 @@ function ActivePlanCard({ plan }: { plan: ActivePlan }) {
 }
 
 export function DashboardPage() {
-  const { data: stats } = useQuery<Stats>({
+  const { data: stats, isLoading: statsLoading } = useQuery<Stats>({
     queryKey: ["stats"],
     queryFn: () => api.get("/me/stats"),
   });
 
-  const { data: weight } = useQuery<WeightEntry[]>({
+  const { data: weight, isLoading: weightLoading } = useQuery<WeightEntry[]>({
     queryKey: ["weight"],
     queryFn: () => api.get("/body/weight?limit=30"),
   });
 
-  const { data: activePlan } = useQuery<ActivePlan | null>({
+  const { data: activePlan, isLoading: planLoading } = useQuery<ActivePlan | null>({
     queryKey: ["activePlan"],
     queryFn: () => api.get("/plans/active"),
   });
+
+  if (statsLoading || weightLoading || planLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
   const weightData = weight?.map((w) => ({
     date: w.date.slice(5), // MM-DD
     kg: Number(w.weightKg),

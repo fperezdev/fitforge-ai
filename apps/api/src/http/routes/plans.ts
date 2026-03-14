@@ -256,6 +256,9 @@ export const planRoutes = new Hono()
       cardioTemplate: { id: string; name: string } | null;
     } | null = null;
 
+    // Logs grouped by day key: "weekIndex:dayIndex" → status[]
+    const logsByDay = new Map<string, string[]>();
+
     if (plan.activatedAt) {
       const msPerDay = 86_400_000;
       // Use startDate (user-chosen Day 1) when available; fall back to activatedAt for legacy rows
@@ -272,7 +275,6 @@ export const planRoutes = new Hono()
         .where(eq(planDayLogs.trainingPlanId, plan.id));
 
       // Group logs by day key so we can check per-component resolution
-      const logsByDay = new Map<string, string[]>();
       for (const l of resolvedLogs) {
         const key = `${l.weekIndex}:${l.dayIndex}`;
         const arr = logsByDay.get(key) ?? [];
@@ -336,7 +338,13 @@ export const planRoutes = new Hono()
       }
     }
 
-    return c.json({ ...plan, suggestedDay });
+    // Expose the per-slot status arrays so the frontend can replicate the walk
+    const dayLogsOut: Record<string, string[]> = {};
+    for (const [key, statuses] of logsByDay) {
+      dayLogsOut[key] = statuses;
+    }
+
+    return c.json({ ...plan, suggestedDay, dayLogs: dayLogsOut });
   })
 
   // Skip today's suggested plan day (or a specific component of it)
@@ -943,20 +951,37 @@ export const planRoutes = new Hono()
       })),
     };
 
-    // Build a per-slot status map: key = "weekIndex:dayIndex" (0-based), value = worst status
-    // Priority: skipped > completed (so a mixed day surfaces as skipped)
-    const statusPriority = (s: string) => (s.includes("skipped") ? 1 : s.includes("completed") ? 0 : -1);
+    // Build a per-slot status map: key = "weekIndex:dayIndex" (0-based)
+    // Returns per-component statuses so the UI can show exactly what was skipped/done.
     const rawLogs = await db
       .select({ weekIndex: planDayLogs.weekIndex, dayIndex: planDayLogs.dayIndex, status: planDayLogs.status })
       .from(planDayLogs)
       .where(and(eq(planDayLogs.trainingPlanId, plan.id), eq(planDayLogs.userId, userId)));
 
-    const dayLogs: Record<string, string> = {};
+    // Accumulate all statuses per slot (keep highest priority per component)
+    // Priority within a component: skipped > completed
+    type SlotLog = { workout?: string; cardio?: string };
+    const componentPriority = (s: string) => (s.includes("skipped") ? 1 : 0);
+    const dayLogs: Record<string, SlotLog> = {};
     for (const log of rawLogs) {
       const key = `${log.weekIndex}:${log.dayIndex}`;
-      const existing = dayLogs[key];
-      if (existing === undefined || statusPriority(log.status) > statusPriority(existing)) {
-        dayLogs[key] = log.status;
+      if (!dayLogs[key]) dayLogs[key] = {};
+      const slot = dayLogs[key];
+      if (log.status === "workout_skipped" || log.status === "workout_completed") {
+        if (!slot.workout || componentPriority(log.status) > componentPriority(slot.workout)) {
+          slot.workout = log.status;
+        }
+      } else if (log.status === "cardio_skipped" || log.status === "cardio_completed") {
+        if (!slot.cardio || componentPriority(log.status) > componentPriority(slot.cardio)) {
+          slot.cardio = log.status;
+        }
+      } else if (log.status === "skipped") {
+        // Legacy full-day skip: mark both
+        slot.workout = slot.workout ?? "workout_skipped";
+        slot.cardio = slot.cardio ?? "cardio_skipped";
+      } else if (log.status === "completed") {
+        slot.workout = slot.workout ?? "workout_completed";
+        slot.cardio = slot.cardio ?? "cardio_completed";
       }
     }
 

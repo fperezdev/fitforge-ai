@@ -42,7 +42,6 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
@@ -115,7 +114,7 @@ interface TrainingPlan {
   startDate: string | null; // YYYY-MM-DD, set when plan was activated
   activatedAt: string | null; // ISO timestamp, fallback anchor for legacy rows
   microcycles: PlanMicrocycle[];
-  dayLogs?: Record<string, string>; // "weekIndex:dayIndex" -> resolved worst status
+  dayLogs?: Record<string, { workout?: string; cardio?: string }>; // "weekIndex:dayIndex" -> per-component status
 }
 
 interface Exercise {
@@ -765,7 +764,7 @@ function DayCell({
   isDraggable?: boolean;
   isReordering?: boolean;
   scheduledDate?: string | null;
-  status?: string | null;
+  status?: { workout?: string; cardio?: string } | null;
   onNavigateToDay?: () => void;
   isOverlay?: boolean;
 }) {
@@ -845,10 +844,10 @@ function DayCell({
           isDraggable && !isPast && "cursor-grab active:cursor-grabbing touch-none",
           isPast && "cursor-default opacity-60",
           hasAny
-            ? "border-primary/30 bg-primary/5 hover:bg-primary/10"
+            ? cn("border-primary/30 bg-primary/5", !isPast && "hover:bg-primary/10")
             : day.type === "rest"
-            ? "border-dashed border-border bg-muted/30 hover:bg-muted/50"
-            : "border-dashed border-border hover:bg-muted/40",
+            ? cn("border-dashed border-border bg-muted/30", !isPast && "hover:bg-muted/50")
+            : cn("border-dashed border-border", !isPast && "hover:bg-muted/40"),
           isLocked && day.type !== "training" && "cursor-default opacity-70"
         )}
         aria-label={`Day ${day.dayNumber}`}
@@ -860,37 +859,13 @@ function DayCell({
               {formatSlotDate(scheduledDate)}
             </span>
           )}
-          {(() => {
-            if (status) {
-              return (
-                <span
-                  className={cn(
-                    "block text-[9px] font-semibold leading-tight",
-                    status.includes("skipped") ? "text-slate-400" : "text-emerald-500"
-                  )}
-                >
-                  {status.includes("skipped") ? "Skipped" : "Done"}
-                </span>
-              );
-            }
-            // Show "Missed" for past training days with no log
-            if (
-              scheduledDate &&
-              day.type === "training" &&
-              (day.workoutTemplateId || day.cardioTemplateId)
-            ) {
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              const slot = new Date(scheduledDate + "T00:00:00");
-              if (slot < today) {
-                return (
-                  <span className="block text-[9px] font-semibold leading-tight text-destructive/70">
-                    Missed
-                  </span>
-                );
-              }
-            }
-            return null;
+          {/* "Missed" for past training days with no log at all */}
+          {!status && scheduledDate && day.type === "training" && (day.workoutTemplateId || day.cardioTemplateId) && (() => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            return new Date(scheduledDate + "T00:00:00") < today ? (
+              <span className="block text-[9px] font-semibold leading-tight text-destructive/70">Missed</span>
+            ) : null;
           })()}
         </span>
 
@@ -900,22 +875,34 @@ function DayCell({
           </span>
         ) : (
           <div className="space-y-0.5">
-            <span
-              className={cn(
-                "block text-[10px] font-medium leading-tight truncate",
-                hasStrength ? "text-primary" : "text-muted-foreground/30"
-              )}
-            >
-              {strengthName ?? "No Strength"}
-            </span>
-            <span
-              className={cn(
-                "block text-[10px] font-medium leading-tight truncate",
-                hasCardio ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/30"
-              )}
-            >
-              {cardioName ?? "No Cardio"}
-            </span>
+            {(() => {
+              const ws = status?.workout;
+              const label = ws === "workout_skipped" ? "Strength skipped"
+                : ws === "workout_completed" ? "Strength done"
+                : (strengthName ?? "No Strength");
+              const color = ws === "workout_skipped" ? "text-slate-400"
+                : ws === "workout_completed" ? "text-emerald-600 dark:text-emerald-400"
+                : hasStrength ? "text-primary" : "text-muted-foreground/30";
+              return (
+                <span className={cn("block text-[10px] font-medium leading-tight truncate", color)}>
+                  {label}
+                </span>
+              );
+            })()}
+            {(() => {
+              const cs = status?.cardio;
+              const label = cs === "cardio_skipped" ? "Cardio skipped"
+                : cs === "cardio_completed" ? "Cardio done"
+                : (cardioName ?? "No Cardio");
+              const color = cs === "cardio_skipped" ? "text-slate-400"
+                : cs === "cardio_completed" ? "text-emerald-600 dark:text-emerald-400"
+                : hasCardio ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/30";
+              return (
+                <span className={cn("block text-[10px] font-medium leading-tight truncate", color)}>
+                  {label}
+                </span>
+              );
+            })()}
           </div>
         )}
 
@@ -1120,6 +1107,12 @@ function PlanView({
     }
 
     if (active.id !== over.id) {
+      // Prevent dropping onto a past day column
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const overDate = getPlanSlotDate(plan, 0, (over.id as number) - 1);
+      if (overDate && new Date(overDate + "T00:00:00") < today) return;
+
       const oldIndex = localDayOrder.indexOf(active.id as number);
       const newIndex = localDayOrder.indexOf(over.id as number);
       if (oldIndex !== -1 && newIndex !== -1) {
@@ -1174,7 +1167,18 @@ function PlanView({
               (d) => d.type !== "training" || d.workoutTemplateId || d.cardioTemplateId
             ).length;
             const totalDays = plan.microcycleLength;
-            const complete = assignedCount === totalDays;
+
+            // Week is fully done when every configured training day has a "done" log
+            const weekComplete = plan.status === "active" && (() => {
+              const trainingDays = mc.days.filter(
+                (d) => d.type === "training" && (d.workoutTemplateId || d.cardioTemplateId)
+              );
+              if (trainingDays.length === 0) return false;
+              return trainingDays.every((d) => {
+                const s = plan.dayLogs?.[`${mc.position - 1}:${d.dayNumber - 1}`];
+                return s && (s.workout === "workout_completed" || s.cardio === "cardio_completed");
+              });
+            })();
 
             return (
               <div key={mc.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
@@ -1218,7 +1222,11 @@ function PlanView({
                         {mc.name ?? `Week ${mc.position}`}
                       </button>
                     )}
-                    {complete && <Badge variant="success">Complete</Badge>}
+                    {weekComplete && (
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
+                        Done
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
@@ -2041,14 +2049,7 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
   });
 
   if (plan.status === "active") {
-    return (
-      <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-4 py-2.5 flex items-center gap-2.5">
-        <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-        <span className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">
-          Active — {assignedDays}/{totalDays} days configured
-        </span>
-      </div>
-    );
+    return null;
   }
 
   if (plan.status === "completed") {
@@ -2186,8 +2187,8 @@ export function PlanEditorPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-24 text-muted-foreground text-sm">
-        Loading plan…
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -2214,7 +2215,21 @@ export function PlanEditorPage() {
       {/* Header */}
       <div className="flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-bold truncate">{plan.name}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl font-bold truncate">{plan.name}</h1>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border shrink-0",
+                plan.status === "active"
+                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                  : plan.status === "completed"
+                  ? "bg-muted text-muted-foreground border-border"
+                  : "bg-muted/50 text-muted-foreground border-border"
+              )}
+            >
+              {plan.status === "active" ? "Active" : plan.status === "completed" ? "Completed" : "Draft"}
+            </span>
+          </div>
           {plan.description && (
             <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{plan.description}</p>
           )}

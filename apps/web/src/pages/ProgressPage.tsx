@@ -34,20 +34,28 @@ interface BodyMeasurement {
 }
 
 export function ProgressPage() {
-  const { data: prs = [] } = useQuery<PR[]>({
+  const { data: prs = [], isLoading: prsLoading } = useQuery<PR[]>({
     queryKey: ["prs"],
     queryFn: () => api.get("/me/records"),
   });
 
-  const { data: weight = [] } = useQuery<WeightEntry[]>({
+  const { data: weight = [], isLoading: weightLoading } = useQuery<WeightEntry[]>({
     queryKey: ["weight"],
     queryFn: () => api.get("/body/weight?limit=90"),
   });
 
-  const { data: measurements = [] } = useQuery<BodyMeasurement[]>({
+  const { data: measurements = [], isLoading: measurementsLoading } = useQuery<BodyMeasurement[]>({
     queryKey: ["measurements"],
     queryFn: () => api.get("/body/measurements"),
   });
+
+  if (prsLoading || weightLoading || measurementsLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
 
   const weightData = weight.map((w) => ({
     date: w.date.slice(5),

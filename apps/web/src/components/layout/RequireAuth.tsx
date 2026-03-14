@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Navigate, Outlet } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
+import { api } from "@/lib/api";
 
 export function RequireAuth() {
   const { user, isLoading, checkAuth } = useAuthStore();
@@ -8,6 +10,13 @@ export function RequireAuth() {
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  // Prefetch active plan once auth is confirmed so all pages get it from cache
+  useQuery({
+    queryKey: ["activePlan"],
+    queryFn: () => api.get("/plans/active"),
+    enabled: !!user,
+  });
 
   if (isLoading) {
     return (

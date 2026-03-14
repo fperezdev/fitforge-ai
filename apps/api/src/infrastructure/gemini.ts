@@ -1,5 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { CoachContext } from "../domain/types.js";
+import type {
+  CoachContext,
+  CoachMessage,
+  PersonalRecord,
+  WorkoutSession,
+  ExerciseEntry,
+  ExerciseSet,
+  CardioSession,
+  Exercise,
+} from "../domain/types.js";
 
 function getGeminiClient() {
   const key = process.env.GEMINI_API_KEY;
@@ -43,25 +52,26 @@ function formatContext(ctx: CoachContext): string {
     parts.push(
       `## Personal Records (estimated 1RM)\n` +
         ctx.personalRecords
-          .map((pr) => `- ${pr.exercise?.name ?? pr.exerciseId}: ${pr.value} kg`)
+          .map((pr: PersonalRecord) => `- ${pr.exercise?.name ?? pr.exerciseId}: ${pr.value} kg`)
           .join("\n"),
     );
   }
 
   if (ctx.recentSessions.length > 0) {
     parts.push(`## Recent Workout Sessions (last ${ctx.recentSessions.length})`);
-    ctx.recentSessions.forEach((s) => {
+    ctx.recentSessions.forEach((s: WorkoutSession) => {
       const date = (
         s.completedAt ? new Date(s.completedAt).toISOString() : new Date(s.startedAt).toISOString()
       ).split("T")[0];
       const exerciseSummary =
         s.entries
-          ?.map((e) => {
+          ?.map((e: ExerciseEntry) => {
             const workingSets =
-              e.sets?.filter((set) => set.type === "working" && set.completed) ?? [];
+              e.sets?.filter((set: ExerciseSet) => set.type === "working" && set.completed) ?? [];
             if (workingSets.length === 0) return null;
             const topSet = workingSets.reduce(
-              (best, set) => ((set.weightKg ?? 0) > (best.weightKg ?? 0) ? set : best),
+              (best: ExerciseSet, set: ExerciseSet) =>
+                (set.weightKg ?? 0) > (best.weightKg ?? 0) ? set : best,
               workingSets[0],
             );
             return `  • ${e.exercise?.name ?? "?"}: ${workingSets.length}×${topSet.reps ?? "?"} @ ${topSet.weightKg ?? "?"}kg`;
@@ -74,7 +84,7 @@ function formatContext(ctx: CoachContext): string {
 
   if (ctx.recentCardio.length > 0) {
     parts.push(`## Recent Cardio Sessions`);
-    ctx.recentCardio.forEach((c) => {
+    ctx.recentCardio.forEach((c: CardioSession) => {
       const date = (
         c.completedAt ? new Date(c.completedAt).toISOString() : new Date(c.startedAt).toISOString()
       ).split("T")[0];
@@ -187,7 +197,7 @@ After the plan is delivered, the user may ask for changes — apply them and out
 function formatExerciseLibrary(exercises: CoachContext["exercises"]): string {
   if (exercises.length === 0) return "";
   const lines = exercises.map(
-    (e) =>
+    (e: Exercise) =>
       `- ${e.name}: primary=${e.primaryMuscle}` +
       (e.secondaryMuscles.length > 0 ? `, secondary=[${e.secondaryMuscles.join(", ")}]` : ""),
   );
@@ -205,9 +215,8 @@ export async function streamCoachResponse(
   const contextStr = formatContext(context);
   const history = context.conversationHistory.slice(-10); // keep last 10 for token budget
 
-  const modeInstruction = context.conversationMode
-    ? (MODE_INSTRUCTIONS[context.conversationMode] ?? "")
-    : "";
+  const mode = context.conversationMode;
+  const modeInstruction = mode ? (MODE_INSTRUCTIONS[mode] ?? "") : "";
 
   const chat = model.startChat({
     systemInstruction: {
@@ -224,7 +233,7 @@ export async function streamCoachResponse(
         },
       ],
     },
-    history: history.map((m) => ({
+    history: history.map((m: CoachMessage) => ({
       role: m.role === "user" ? "user" : "model",
       parts: [{ text: m.content }],
     })),

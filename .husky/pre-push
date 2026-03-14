@@ -1,0 +1,4 @@
+pnpm --filter @fitforge/types build &&
+pnpm --filter @fitforge/db build &&
+pnpm --filter @fitforge/api build &&
+pnpm --filter @fitforge/web build

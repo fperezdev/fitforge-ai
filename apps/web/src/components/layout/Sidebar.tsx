@@ -18,10 +18,10 @@ import { Button } from "@/components/ui/button";
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/planner", icon: CalendarDays, label: "Planner" },
-  { to: "/workout", icon: Dumbbell, label: "Workout" },
-  { to: "/cardio", icon: Activity, label: "Cardio" },
   { to: "/coach", icon: Bot, label: "AI Coach" },
   { to: "/progress", icon: TrendingUp, label: "Progress" },
+  { to: "/workout", icon: Dumbbell, label: "Workout" },
+  { to: "/cardio", icon: Activity, label: "Cardio" },
   { to: "/profile", icon: UserCircle, label: "Profile" },
 ];
 
@@ -41,9 +41,7 @@ export function Sidebar() {
     <aside className="hidden md:flex flex-col w-60 min-h-screen border-r border-border bg-card px-3 py-6 gap-1">
       {/* Logo */}
       <div className="flex items-center gap-2 px-3 mb-6">
-        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-          <Dumbbell className="h-4 w-4 text-primary-foreground" />
-        </div>
+        <img src="/favicon.svg" className="h-8 w-8" alt="FitForge logo" />
         <span className="font-bold text-lg">FitForge</span>
       </div>
 
@@ -86,6 +84,7 @@ export function Sidebar() {
 export function BottomNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
   const location = useLocation();
 
   const isMoreActive = mobileMoreItems.some((item) =>
@@ -102,8 +101,20 @@ export function BottomNav() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [moreOpen]);
 
+  // Prevent pinch-to-zoom on the nav bar on iOS (touch-action CSS is not enough on iOS WebKit)
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    function preventZoom(e: TouchEvent) {
+      if (e.touches.length > 1) e.preventDefault();
+    }
+    nav.addEventListener("touchmove", preventZoom, { passive: false });
+    return () => nav.removeEventListener("touchmove", preventZoom);
+  }, []);
+
   return (
     <nav
+      ref={navRef}
       className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-card border-t border-border flex items-center"
       aria-label="Mobile navigation"
     >

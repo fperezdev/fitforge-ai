@@ -1955,23 +1955,8 @@ interface Adherence {
   cardio: AdherenceComponent;
 }
 
-function PlanAdherenceCard({ planId }: { planId: string }) {
+function PlanAdherenceCard({ adherence }: { adherence: Adherence }) {
   const [tab, setTab] = useState<"all" | "strength" | "cardio">("all");
-  const { data: adherence, isLoading } = useQuery<Adherence | null>({
-    queryKey: ["planAdherence", planId],
-    queryFn: () => api.get(`/plans/${planId}/adherence`),
-    staleTime: 60_000,
-  });
-
-  if (isLoading) {
-    return (
-      <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground animate-pulse">
-        Loading adherence…
-      </div>
-    );
-  }
-
-  if (!adherence) return null;
 
   const pct = Math.round(adherence.completionRate * 100);
 
@@ -2084,7 +2069,7 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
               key={w.weekIndex}
               className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 items-center rounded-md bg-muted/30 px-2 py-1.5 text-sm"
             >
-              <span className="text-xs font-semibold text-muted-foreground w-6">
+              <span className="text-xs font-semibold text-muted-foreground w-10">
                 W{w.weekIndex + 1}
               </span>
               <span className="text-center tabular-nums">{w.planned}</span>
@@ -2100,27 +2085,17 @@ function PlanAdherenceCard({ planId }: { planId: string }) {
 
           {/* Totals summary */}
           {totals.planned > 0 && (
-            <p className="text-xs text-muted-foreground text-center pt-1">
-              {totals.planned} planned ·{" "}
-              <span className="text-emerald-600 dark:text-emerald-400">
-                {totals.completed} done
+            <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 items-center rounded-md border border-border/60 px-2 py-1.5 text-sm font-semibold mt-1">
+              <span className="text-xs font-semibold text-muted-foreground w-10">Total</span>
+              <span className="text-center tabular-nums">{totals.planned}</span>
+              <span className="text-center tabular-nums text-emerald-600 dark:text-emerald-400">
+                {totals.completed}
               </span>
-              {totals.skipped > 0 && (
-                <>
-                  {" "}
-                  ·{" "}
-                  <span className="text-amber-600 dark:text-amber-400">
-                    {totals.skipped} skipped
-                  </span>
-                </>
-              )}
-              {totals.missed > 0 && (
-                <>
-                  {" "}
-                  · <span className="text-destructive/70">{totals.missed} missed</span>
-                </>
-              )}
-            </p>
+              <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
+                {totals.skipped}
+              </span>
+              <span className="text-center tabular-nums text-destructive/70">{totals.missed}</span>
+            </div>
           )}
         </div>
       ) : (
@@ -2281,6 +2256,13 @@ export function PlanEditorPage() {
 
   const isLoading = isMetaLoading || (!!id && isPlanLoading);
 
+  const { data: adherence, isLoading: isAdherenceLoading } = useQuery<Adherence | null>({
+    queryKey: ["planAdherence", id],
+    queryFn: () => api.get(`/plans/${id}/adherence`),
+    enabled: !!id && plan?.status === "active",
+    staleTime: 60_000,
+  });
+
   const deletePlanMutation = useMutation({
     mutationFn: () => api.delete(`/plans/${id}`),
     onSuccess: () => {
@@ -2310,7 +2292,7 @@ export function PlanEditorPage() {
     );
   }
 
-  if (isLoading) {
+  if (isLoading || isAdherenceLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
@@ -2384,7 +2366,7 @@ export function PlanEditorPage() {
         <PlanStatusBanner plan={plan} />
 
         {/* Adherence metrics — active plans only */}
-        {plan.status === "active" && <PlanAdherenceCard planId={plan.id} />}
+        {plan.status === "active" && adherence && <PlanAdherenceCard adherence={adherence} />}
 
         {/* View switcher */}
         <div

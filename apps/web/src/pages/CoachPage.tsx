@@ -903,7 +903,7 @@ export function CoachPage() {
     queryFn: () => api.get("/coach/conversations"),
   });
 
-  const { data: messages = [] } = useQuery<Message[]>({
+  const { data: messages = [], isLoading: isMessagesLoading } = useQuery<Message[]>({
     queryKey: ["messages", activeConv],
     queryFn: () => api.get(`/coach/conversations/${activeConv}/messages`),
     enabled: !!activeConv,
@@ -1088,6 +1088,20 @@ export function CoachPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  if (
+    isProfileLoading ||
+    isWeightLoading ||
+    isConversationsLoading ||
+    isPlanLoading ||
+    (activeConv && isMessagesLoading)
+  ) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-[calc(100vh-6rem)] gap-4">
       {/* Mobile sidebar toggle */}
@@ -1178,11 +1192,7 @@ export function CoachPage() {
       {/* Main chat area */}
       <div className="flex-1 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
         {/* Profile gate */}
-        {isProfileLoading || isWeightLoading || isConversationsLoading || isPlanLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : !profileComplete ? (
+        {!profileComplete ? (
           <ProfileGate
             profile={profile}
             hasWeight={hasWeight}

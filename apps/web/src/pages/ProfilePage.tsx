@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { User, Ruler, Target, Save, ChevronDown, ShieldAlert } from "lucide-react";
+import { User, Ruler, Target, Save, ChevronDown, ShieldAlert, Dumbbell } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/store/auth";
-import type { UserProfile } from "@fitforge/types";
+import type { UserProfile, EquipmentOption } from "@fitforge/types";
+import { EquipmentSelector } from "@/components/ui/equipment-selector";
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -24,6 +25,7 @@ const profileSchema = z.object({
   fitnessGoal: z.string().optional(),
   experienceLevel: z.string().optional(),
   injuries: z.string().optional(),
+  equipment: z.array(z.string()).min(1),
 });
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
@@ -102,6 +104,7 @@ export function ProfilePage() {
           fitnessGoal: profile.fitnessGoal ?? "",
           experienceLevel: profile.experienceLevel ?? "",
           injuries: profile.injuries ?? "",
+          equipment: profile.equipment ?? ["full_gym"],
         }
       : undefined,
   });
@@ -111,6 +114,7 @@ export function ProfilePage() {
   const watchedGender = useWatch({ control, name: "gender" });
   const watchedFitnessGoal = useWatch({ control, name: "fitnessGoal" });
   const watchedExperienceLevel = useWatch({ control, name: "experienceLevel" });
+  const watchedEquipment = useWatch({ control, name: "equipment" }) as EquipmentOption[];
 
   const mutation = useMutation({
     mutationFn: (data: ProfileFormValues) =>
@@ -134,6 +138,7 @@ export function ProfilePage() {
         fitnessGoal: updated.fitnessGoal ?? "",
         experienceLevel: updated.experienceLevel ?? "",
         injuries: updated.injuries ?? "",
+        equipment: updated.equipment ?? ["full_gym"],
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -278,6 +283,22 @@ export function ProfilePage() {
                 { value: "intermediate", label: "Intermediate (1–3 years)" },
                 { value: "advanced", label: "Advanced (3+ years)" },
               ]}
+            />
+          </CardContent>
+        </Card>
+
+        {/* Equipment */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Dumbbell className="h-4 w-4" />
+              Equipment
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <EquipmentSelector
+              value={watchedEquipment ?? ["full_gym"]}
+              onChange={(v) => setValue("equipment", v, { shouldDirty: true })}
             />
           </CardContent>
         </Card>

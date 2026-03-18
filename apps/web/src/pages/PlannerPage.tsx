@@ -1,5 +1,5 @@
-import { useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, Link } from "react-router-dom";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { CalendarRange, Plus } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,6 +7,8 @@ import { z } from "zod";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EQUIPMENT_GROUPS } from "@/components/ui/equipment-selector";
+import type { UserProfile, EquipmentOption } from "@fitforge/types";
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +26,19 @@ type NewPlanForm = z.infer<typeof newPlanSchema>;
 export function PlannerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  const { data: profile } = useQuery<UserProfile>({
+    queryKey: ["me/profile"],
+    queryFn: () => api.get<UserProfile>("/me/profile"),
+  });
+
+  // Resolve display labels for the user's equipment
+  const equipmentLabels: string[] = (() => {
+    const eq: EquipmentOption[] = profile?.equipment ?? ["full_gym"];
+    if (eq.includes("full_gym")) return ["Full Gym"];
+    const allItems = EQUIPMENT_GROUPS.flatMap((g) => g.items);
+    return eq.map((v) => allItems.find((i) => i.value === v)?.label ?? v);
+  })();
 
   const {
     register,
@@ -101,6 +116,28 @@ export function PlannerPage() {
             <Plus className="h-4 w-4" />
             Create plan
           </Button>
+
+          {/* Equipment summary — read-only, driven by profile */}
+          <div className="rounded-md border border-input bg-muted/40 px-3 py-2.5 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Equipment
+              </span>
+              <Link to="/profile" className="text-xs text-primary hover:underline shrink-0">
+                Change in Profile →
+              </Link>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {equipmentLabels.map((label) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center rounded-full border border-input bg-background px-2.5 py-0.5 text-xs font-medium text-foreground"
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          </div>
         </form>
       </div>
     </div>

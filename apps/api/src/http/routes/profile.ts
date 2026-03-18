@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { userProfiles } from "@fitforge/db";
+import { EQUIPMENT_OPTIONS } from "@fitforge/types";
 import { getDb } from "../../infrastructure/db.js";
 import { authMiddleware, getUserId } from "../middleware/auth.js";
 
@@ -15,6 +16,7 @@ const updateProfileSchema = z.object({
   fitnessGoal: z.string().optional().nullable(),
   experienceLevel: z.enum(["beginner", "intermediate", "advanced"]).optional().nullable(),
   injuries: z.string().optional().nullable(),
+  equipment: z.array(z.enum(EQUIPMENT_OPTIONS)).optional(),
 });
 
 export const profileRoutes = new Hono()

@@ -66,6 +66,10 @@ export const userProfiles = pgTable("user_profiles", {
   fitnessGoal: varchar("fitness_goal", { length: 100 }),
   experienceLevel: varchar("experience_level", { length: 50 }),
   injuries: text("injuries"),
+  equipment: text("equipment")
+    .array()
+    .notNull()
+    .default(sql`'{full_gym}'::text[]`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -82,6 +86,10 @@ export const exercises = pgTable("exercises", {
     .array()
     .notNull()
     .default(sql`'{}'::muscle[]`),
+  requiredEquipment: text("required_equipment")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

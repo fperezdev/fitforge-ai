@@ -19,7 +19,8 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { api, importPlanFromAI, streamCoach } from "@/lib/api";
-import type { UserProfile, WeightEntry } from "@fitforge/types";
+import type { UserProfile, WeightEntry, EquipmentOption } from "@fitforge/types";
+import { EquipmentSelector } from "@/components/ui/equipment-selector";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -289,10 +290,12 @@ function MessageBubble({
   message,
   onSavePlan,
   canImportPlan,
+  conversationMode,
 }: {
   message: Message;
   onSavePlan?: (plan: object) => void;
   canImportPlan?: boolean;
+  conversationMode?: "advice" | "plan" | null;
 }) {
   const isUser = message.role === "user";
   const plan = !isUser ? extractPlan(message.content) : null;
@@ -328,6 +331,13 @@ function MessageBubble({
         )}
         {plan && !canImportPlan && (
           <p className="mt-3 text-xs text-muted-foreground">You already have a training plan.</p>
+        )}
+        {plan && canImportPlan && conversationMode === "plan" && (
+          <p className="mt-3 text-xs text-muted-foreground border-l-2 border-muted-foreground/30 pl-2">
+            Head to the Planner to review and edit the draft, then come back and use{" "}
+            <span className="font-medium text-foreground">Include Plan</span> to give the AI your
+            updated plan as context for further refinements.
+          </p>
         )}
       </div>
     </div>
@@ -710,13 +720,23 @@ const PLAN_TYPE_OPTIONS: { value: PlanType; label: string; icon: React.ReactNode
 function PlanFlow({
   onStart,
   isLoading,
+  profile,
 }: {
-  onStart: (objectives: string, planType: PlanType, extra: string) => void;
+  onStart: (
+    objectives: string,
+    planType: PlanType,
+    equipment: EquipmentOption[],
+    injuries: string,
+    extra: string,
+  ) => void;
   isLoading: boolean;
+  profile: UserProfile | undefined;
 }) {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [objectives, setObjectives] = useState("");
   const [planType, setPlanType] = useState<PlanType | null>(null);
+  const [equipment, setEquipment] = useState<EquipmentOption[]>(profile?.equipment ?? ["full_gym"]);
+  const [injuries, setInjuries] = useState(profile?.injuries ?? "");
   const [extra, setExtra] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
@@ -727,20 +747,28 @@ function PlanFlow({
     } else if (step === 2) {
       if (!planType) return;
       setStep(3);
+    } else if (step === 3) {
+      // Auto-save equipment to profile (fire-and-forget)
+      api.patch("/me/profile", { equipment });
+      setStep(4);
+    } else if (step === 4) {
+      // Auto-save injuries to profile (fire-and-forget)
+      api.patch("/me/profile", { injuries });
+      setStep(5);
     } else {
-      onStart(objectives.trim(), planType!, extra.trim());
+      onStart(objectives.trim(), planType!, equipment, injuries.trim(), extra.trim());
     }
   }
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center max-w-sm mx-auto">
-      <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+    <div className="flex flex-col items-center gap-5 p-8 text-center max-w-sm mx-auto min-h-full justify-center">
+      <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
         <ClipboardList className="h-6 w-6 text-primary" />
       </div>
 
       {/* Step indicator */}
       <div className="flex items-center gap-2">
-        {([1, 2, 3] as const).map((s) => (
+        {([1, 2, 3, 4, 5] as const).map((s) => (
           <div
             key={s}
             className={cn(
@@ -817,21 +845,73 @@ function PlanFlow({
         {step === 3 && (
           <>
             <div>
+              <h2 className="text-base font-semibold">What equipment do you have?</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Helps tailor the plan to what's available to you.
+              </p>
+            </div>
+            <div className="text-left">
+              <EquipmentSelector value={equipment} onChange={setEquipment} />
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setStep(2)}>
+                Back
+              </Button>
+              <Button type="submit" className="flex-1">
+                Next
+              </Button>
+            </div>
+          </>
+        )}
+
+        {step === 4 && (
+          <>
+            <div>
+              <h2 className="text-base font-semibold">Any injuries or conditions?</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Optional — helps the AI avoid exercises that aggravate your condition.
+              </p>
+            </div>
+            <textarea
+              value={injuries}
+              onChange={(e) => setInjuries(e.target.value)}
+              rows={3}
+              placeholder="e.g. Lower back pain, right knee tendinitis"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              aria-label="Injuries or conditions"
+            />
+            <p className="text-xs text-muted-foreground -mt-2">
+              This will also update your profile.
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setStep(3)}>
+                Back
+              </Button>
+              <Button type="submit" className="flex-1">
+                Next
+              </Button>
+            </div>
+          </>
+        )}
+
+        {step === 5 && (
+          <>
+            <div>
               <h2 className="text-base font-semibold">Any additional context?</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Optional — days per week, equipment, preferences, etc.
+                Optional — days per week, preferences, schedule, etc.
               </p>
             </div>
             <textarea
               value={extra}
               onChange={(e) => setExtra(e.target.value)}
-              rows={3}
-              placeholder="e.g. 4 days per week, gym with barbells and dumbbells"
+              rows={6}
+              placeholder="e.g. 4 days per week, prefer morning workouts"
               className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
               aria-label="Additional context"
             />
             <div className="flex gap-2">
-              <Button type="button" variant="outline" className="flex-1" onClick={() => setStep(2)}>
+              <Button type="button" variant="outline" className="flex-1" onClick={() => setStep(4)}>
                 Back
               </Button>
               <Button type="submit" className="flex-1" loading={isLoading}>
@@ -909,7 +989,11 @@ export function CoachPage() {
     enabled: !!activeConv,
   });
 
-  const { data: plan = null, isLoading: isPlanLoading } = useQuery<{ id: string } | null>({
+  const { data: plan = null, isLoading: isPlanLoading } = useQuery<{
+    id: string;
+    name: string;
+    status: string;
+  } | null>({
     queryKey: ["plans"],
     queryFn: () => api.get("/plans"),
   });
@@ -1014,19 +1098,54 @@ export function CoachPage() {
   async function startAdvice(concern: string) {
     setIsCreatingConv(true);
     try {
+      // Build [Context] block from profile already in scope
+      const contextLines: string[] = [];
+      if (profile) {
+        const p = profile;
+        if (p.displayName) contextLines.push(`Name: ${p.displayName}`);
+        if (p.dateOfBirth) {
+          const age = Math.floor(
+            (Date.now() - new Date(p.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365.25),
+          );
+          contextLines.push(`Age: ${age} years`);
+        }
+        if (p.gender) contextLines.push(`Gender: ${p.gender}`);
+        if (p.experienceLevel) contextLines.push(`Experience: ${p.experienceLevel}`);
+        if (p.fitnessGoal) contextLines.push(`Goal: ${p.fitnessGoal}`);
+        if (p.heightCm) contextLines.push(`Height: ${p.heightCm} cm`);
+        if (p.equipment && p.equipment.length > 0 && !p.equipment.includes("full_gym")) {
+          contextLines.push(`Equipment: ${p.equipment.join(", ")}`);
+        }
+        if (p.injuries?.trim()) contextLines.push(`Injuries/conditions: ${p.injuries.trim()}`);
+      }
+      if (plan) {
+        contextLines.push(`Current plan: "${plan.name}" (${plan.status})`);
+      }
+
+      const firstMessage =
+        contextLines.length > 0
+          ? `[Context]\n${contextLines.join("\n")}\n\n[Question]\n${concern}`
+          : concern;
+
       const conv = await api.post<Conversation>("/coach/conversations", {
         title: concern.slice(0, 80),
         mode: "advice",
       });
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       setActiveConv(conv.id);
-      sendMessage(concern, conv.id);
+      sendMessage(firstMessage, conv.id);
     } finally {
       setIsCreatingConv(false);
     }
   }
 
-  async function startPlan(objectives: string, planType: PlanType, extra: string) {
+  async function startPlan(
+    objectives: string,
+    planType: PlanType,
+    equipment: EquipmentOption[],
+    injuries: string,
+    extra: string,
+  ) {
     setIsCreatingConv(true);
     const planTypeLabel =
       planType === "hypertrophy"
@@ -1035,9 +1154,13 @@ export function CoachPage() {
           ? "Cardio only"
           : "Both (Hypertrophy + Cardio)";
 
+    const equipmentLabel = equipment.includes("full_gym") ? "Full Gym" : equipment.join(", ");
+
     const firstMessage = [
       `Plan type: ${planTypeLabel}`,
       `Objectives: ${objectives}`,
+      `Equipment: ${equipmentLabel}`,
+      injuries ? `Injuries/conditions: ${injuries}` : null,
       extra ? `Additional context: ${extra}` : null,
       "Please create a training plan based on the above.",
     ]
@@ -1085,6 +1208,9 @@ export function CoachPage() {
   const lastUserMessage = [...lastServerMessagesRef.current]
     .reverse()
     .find((m) => m.role === "user");
+  const planHasBeenGenerated =
+    activeConvData?.mode === "plan" &&
+    messages.some((m) => m.role === "assistant" && m.content.includes("<plan>"));
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1210,6 +1336,7 @@ export function CoachPage() {
                   message={msg}
                   onSavePlan={(p) => setPlanToSave(p)}
                   canImportPlan={canImportPlan}
+                  conversationMode={activeConvData?.mode}
                 />
               ))}
 
@@ -1262,6 +1389,13 @@ export function CoachPage() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
+                  {planHasBeenGenerated && !planIsIncluded && (
+                    <p className="text-xs text-muted-foreground px-1">
+                      Want to refine the plan? Use{" "}
+                      <span className="font-medium text-foreground">Include Plan</span> to give the
+                      AI your current draft as context.
+                    </p>
+                  )}
                   {plan !== null && (
                     <div className="flex justify-end">
                       <Button
@@ -1311,7 +1445,7 @@ export function CoachPage() {
           </>
         ) : (
           /* No active conversation — show funnel */
-          <>
+          <div className="flex-1 overflow-y-auto min-h-0">
             {funnelStep === "mode" && (
               <ModeSelector
                 onSelect={(mode) => setFunnelStep(mode === "advice" ? "advice" : "plan")}
@@ -1320,8 +1454,10 @@ export function CoachPage() {
             {funnelStep === "advice" && (
               <AdviceFlow onStart={startAdvice} isLoading={isCreatingConv} />
             )}
-            {funnelStep === "plan" && <PlanFlow onStart={startPlan} isLoading={isCreatingConv} />}
-          </>
+            {funnelStep === "plan" && (
+              <PlanFlow onStart={startPlan} isLoading={isCreatingConv} profile={profile} />
+            )}
+          </div>
         )}
       </div>
 

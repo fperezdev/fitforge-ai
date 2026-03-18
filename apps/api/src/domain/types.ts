@@ -1,5 +1,6 @@
 // Domain types — re-exported from the shared @fitforge/types package
 export type {
+  EquipmentOption,
   UserProfile,
   Muscle,
   Exercise,
@@ -10,6 +11,8 @@ export type {
   ExerciseSet,
   CardioSession,
   WeightEntry,
+  BodyMeasurement,
+  TrainingPlan,
   PersonalRecord,
   CoachConversation,
   CoachMessage,

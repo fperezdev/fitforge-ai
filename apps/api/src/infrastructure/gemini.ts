@@ -10,6 +10,51 @@ import type {
   Exercise,
 } from "../domain/types.js";
 
+// Equipment display labels for the LLM prompt
+const EQUIPMENT_LABELS: Record<string, string> = {
+  full_gym: "Full Gym",
+  barbell: "Barbell + plates",
+  rack: "Squat / power rack",
+  dumbbells: "Dumbbells",
+  kettlebells: "Kettlebells",
+  ez_bar: "EZ bar",
+  cables: "Cable machine",
+  smith_machine: "Smith machine",
+  leg_press: "Leg press machine",
+  leg_curl_machine: "Leg curl machine",
+  leg_extension_machine: "Leg extension machine",
+  calf_raise_machine: "Calf raise machine",
+  chest_fly_machine: "Pec deck / chest fly",
+  lat_pulldown_machine: "Lat pulldown machine",
+  seated_row_machine: "Seated row machine",
+  hack_squat_machine: "Hack squat machine",
+  hip_thrust_machine: "Hip thrust / glute machine",
+  shoulder_press_machine: "Shoulder press machine",
+  bicep_curl_machine: "Bicep curl machine",
+  tricep_machine: "Tricep press / dip machine",
+  pullup_bar: "Pull-up bar",
+  dip_bars: "Dip bars",
+  bands: "Resistance bands",
+  bodyweight: "Bodyweight only",
+};
+
+function filterExercisesByEquipment(
+  exercises: Exercise[],
+  equipment: string[] | null | undefined,
+): Exercise[] {
+  // No profile or full_gym → no restriction, send all
+  if (!equipment || equipment.length === 0 || equipment.includes("full_gym")) {
+    return exercises;
+  }
+  return exercises.filter(
+    (e) =>
+      // bodyweight / no equipment required → always available
+      e.requiredEquipment.length === 0 ||
+      // user has at least one of the required items
+      e.requiredEquipment.some((req) => equipment.includes(req)),
+  );
+}
+
 function getGeminiClient() {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY is required");
@@ -26,6 +71,10 @@ function formatContext(ctx: CoachContext): string {
           (Date.now() - new Date(p.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365.25),
         )
       : null;
+    const equipmentStr =
+      !p.equipment || p.equipment.length === 0 || p.equipment.includes("full_gym")
+        ? "Full Gym (no restriction)"
+        : p.equipment.map((e) => EQUIPMENT_LABELS[e] ?? e).join(", ");
     parts.push(
       `## Athlete Profile
 - Name: ${p.displayName}
@@ -35,6 +84,7 @@ function formatContext(ctx: CoachContext): string {
 - Goal: ${p.fitnessGoal ?? "not specified"}
 - Height: ${p.heightCm ? `${p.heightCm} cm` : "unknown"}
 - Units: ${p.unitPreference}
+- Equipment: ${equipmentStr}
 - Injuries / Limitations: ${p.injuries?.trim() || "none reported"}`,
     );
   }
@@ -218,6 +268,12 @@ export async function streamCoachResponse(
   const mode = context.conversationMode;
   const modeInstruction = mode ? (MODE_INSTRUCTIONS[mode] ?? "") : "";
 
+  // Filter exercise library to only what the user's equipment supports
+  const availableExercises = filterExercisesByEquipment(
+    context.exercises,
+    context.profile?.equipment ?? null,
+  );
+
   const chat = model.startChat({
     systemInstruction: {
       role: "system",
@@ -227,7 +283,7 @@ export async function streamCoachResponse(
             BASE_SYSTEM_PROMPT +
             modeInstruction +
             "\n\n" +
-            formatExerciseLibrary(context.exercises) +
+            formatExerciseLibrary(availableExercises) +
             "\n\n## Current Athlete Data\n" +
             contextStr,
         },

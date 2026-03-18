@@ -7,6 +7,15 @@ services:
     plan: free
     buildCommand: npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @fitforge/types build && pnpm --filter @fitforge/db build && pnpm --filter @fitforge/api build
     startCommand: node apps/api/dist/index.js
+    buildFilter:
+      paths:
+        - apps/api/**
+        - packages/types/**
+        - packages/db/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - render.yaml
     envVars:
       - key: NODE_ENV
         value: production
@@ -31,6 +40,14 @@ services:
     runtime: static
     buildCommand: npm install -g pnpm && pnpm install --frozen-lockfile --ignore-scripts && pnpm --filter @fitforge/types build && pnpm --filter @fitforge/web build
     staticPublishPath: apps/web/dist
+    buildFilter:
+      paths:
+        - apps/web/**
+        - packages/types/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - render.yaml
     envVars:
       - key: VITE_API_URL
         sync: false

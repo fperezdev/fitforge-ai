@@ -23,6 +23,7 @@
     "react-hook-form": "^7.71.2",
     "react-router-dom": "^7.13.1",
     "recharts": "^3.8.0",
+    "workbox-window": "^7.4.0",
     "zod": "^3.23.8",
     "zustand": "^5.0.11"
   },
@@ -44,6 +45,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vite-plugin-pwa": "^1.2.0"
   }
 }

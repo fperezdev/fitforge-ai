@@ -18,8 +18,8 @@ export function useSkipDay() {
   const skipMutation = useMutation({
     mutationFn: ({ weekIndex, dayIndex, component = "all", notes }: DayTarget) =>
       api.post("/plans/active/skip-day", { weekIndex, dayIndex, component, notes }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["activePlan"] });
       setConfirmOpen(false);
       setSkipped(true);
     },
@@ -28,8 +28,8 @@ export function useSkipDay() {
   const moveMutation = useMutation({
     mutationFn: ({ weekIndex, dayIndex }: DayTarget) =>
       api.post("/plans/active/move-day", { weekIndex, dayIndex }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["activePlan"] });
       setConfirmOpen(false);
       setMoved(true);
     },

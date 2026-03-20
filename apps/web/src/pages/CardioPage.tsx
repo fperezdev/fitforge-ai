@@ -97,9 +97,11 @@ export function CardioPage() {
           ? { planDayId, weekIndex: planWeekIndex, dayIndex: planDayIndex }
           : {}),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cardio"] });
-      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["cardio"] }),
+        queryClient.invalidateQueries({ queryKey: ["activePlan"] }),
+      ]);
       setModalOpen(false);
       reset();
       setPlanDayId(null);

@@ -1043,8 +1043,6 @@ function PlanView({
   const [localDayOrder, setLocalDayOrder] = useState<number[]>(() =>
     Array.from({ length: plan.microcycleLength }, (_, i) => i + 1),
   );
-  // Holds the saved order while the refetch is in-flight, preventing flicker
-  const [pendingOrder, setPendingOrder] = useState<number[] | null>(null);
 
   const isLocked = plan.status === "completed";
 
@@ -1087,33 +1085,22 @@ function PlanView({
 
   const reorderDaysMutation = useMutation({
     mutationFn: (order: number[]) => api.patch(`/plans/${plan.id}/days/reorder`, { order }),
-    onMutate: (order: number[]) => {
-      // Immediately exit reorder mode and hold the saved order so the grid
-      // doesn't flicker back to the stale canonical order during the refetch.
-      setPendingOrder(order);
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
       setIsReordering(false);
     },
-    onError: (_err, order) => {
-      // Keep pendingOrder so the grid stays at the attempted order while the
-      // user decides what to do. Re-enter reorder mode so they can retry or cancel.
-      setPendingOrder(order);
-      setIsReordering(true);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
-      setPendingOrder(null);
+    onError: () => {
+      // Stay in reorder mode so the user can retry or cancel.
     },
   });
 
   const canDeleteWeek = plan.microcycles.length > 1;
   const canDeleteDay = localDayOrder.length > 1;
-  // Priority: reordering → use localDayOrder; saving in-flight → use pendingOrder; else canonical
-  const dayOrder = isReordering ? localDayOrder : (pendingOrder ?? canonicalOrder);
+  const dayOrder = isReordering ? localDayOrder : canonicalOrder;
 
   const handleCancelReorder = () => {
     setIsReordering(false);
     setLocalDayOrder(canonicalOrder);
-    setPendingOrder(null);
   };
 
   const handleSaveReorder = () => {
@@ -1206,7 +1193,14 @@ function PlanView({
                 </Button>
               </>
             ) : (
-              <Button size="sm" variant="outline" onClick={() => setIsReordering(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setLocalDayOrder(canonicalOrder);
+                  setIsReordering(true);
+                }}
+              >
                 <Pencil className="h-3.5 w-3.5 mr-1" />
                 Edit order
               </Button>
@@ -1325,7 +1319,9 @@ function PlanView({
                             planId={plan.id}
                             micId={mc.id}
                             isLocked={isLocked}
-                            isDraggable={isReordering && !isLocked}
+                            isDraggable={
+                              isReordering && !isLocked && !reorderDaysMutation.isPending
+                            }
                             isReordering={isReordering}
                             scheduledDate={
                               plan.status === "active"

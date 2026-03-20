@@ -18,6 +18,27 @@ export function getRefreshToken(): string | null {
   return localStorage.getItem("refresh_token");
 }
 
+/** Attempts to refresh the access token. Returns true on success, false on failure. */
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  if (refreshRes.ok) {
+    const { accessToken, refreshToken: newRefresh } = await refreshRes.json();
+    setTokens(accessToken, newRefresh);
+    return true;
+  }
+
+  clearTokens();
+  return false;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: HeadersInit = {
@@ -29,27 +50,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    // Try refresh
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
-      const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
-      });
-      if (refreshRes.ok) {
-        const { accessToken, refreshToken: newRefresh } = await refreshRes.json();
-        setTokens(accessToken, newRefresh);
-        // Retry original request
-        return request(path, options);
-      } else {
-        clearTokens();
-        window.location.href = "/login";
-      }
-    } else {
-      clearTokens();
-      window.location.href = "/login";
-    }
+    const refreshed = await tryRefreshToken();
+    if (refreshed) return request(path, options);
+    window.location.href = "/login";
   }
 
   if (!res.ok) {
@@ -90,6 +93,63 @@ export function importPlanFromAI(plan: object): Promise<{ id: string }> {
   });
 }
 
+async function doStreamCoach(
+  conversationId: string,
+  content: string,
+  signal: AbortSignal,
+  onChunk: (chunk: string) => void,
+  onDone: (messageId: string) => void,
+  onError: (err: Error) => void,
+  isRetry = false,
+): Promise<void> {
+  const token = getToken();
+
+  const res = await fetch(`${BASE_URL}/coach/conversations/${conversationId}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ content }),
+    signal,
+  });
+
+  if (res.status === 401 && !isRetry) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      return doStreamCoach(conversationId, content, signal, onChunk, onDone, onError, true);
+    }
+    window.location.href = "/login";
+    return;
+  }
+
+  if (!res.ok || !res.body) {
+    onError(new Error("Failed to connect to coach"));
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const text = decoder.decode(value);
+    for (const line of text.split("\n")) {
+      if (!line.startsWith("data: ")) continue;
+      try {
+        const data = JSON.parse(line.slice(6));
+        if (data.chunk) onChunk(data.chunk);
+        if (data.done) onDone(data.messageId);
+        if (data.error) onError(new Error(data.error));
+      } catch {
+        // ignore malformed lines
+      }
+    }
+  }
+}
+
 // SSE streaming for coach
 export function streamCoach(
   conversationId: string,
@@ -99,51 +159,14 @@ export function streamCoach(
   onError: (err: Error) => void,
 ): AbortController {
   const controller = new AbortController();
-  const token = getToken();
 
-  fetch(`${BASE_URL}/coach/conversations/${conversationId}/messages`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ content }),
-    signal: controller.signal,
-  })
-    .then(async (res) => {
-      if (!res.ok || !res.body) {
-        onError(new Error("Failed to connect to coach"));
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const text = decoder.decode(value);
-        const lines = text.split("\n");
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.chunk) onChunk(data.chunk);
-            if (data.done) onDone(data.messageId);
-            if (data.error) {
-              onError(new Error(data.error));
-            }
-          } catch {
-            // ignore malformed lines
-          }
-        }
-      }
-    })
-    .catch((err) => {
+  doStreamCoach(conversationId, content, controller.signal, onChunk, onDone, onError).catch(
+    (err) => {
       if (err.name !== "AbortError") {
         onError(err instanceof Error ? err : new Error(err));
       }
-    });
+    },
+  );
 
   return controller;
 }

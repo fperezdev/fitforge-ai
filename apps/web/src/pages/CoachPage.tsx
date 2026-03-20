@@ -290,12 +290,10 @@ function MessageBubble({
   message,
   onSavePlan,
   canImportPlan,
-  conversationMode,
 }: {
   message: Message;
   onSavePlan?: (plan: object) => void;
   canImportPlan?: boolean;
-  conversationMode?: "advice" | "plan" | null;
 }) {
   const isUser = message.role === "user";
   const plan = !isUser ? extractPlan(message.content) : null;
@@ -328,16 +326,6 @@ function MessageBubble({
             <Plus className="h-3 w-3" />
             Import as Training Plan
           </button>
-        )}
-        {plan && !canImportPlan && (
-          <p className="mt-3 text-xs text-muted-foreground">You already have a training plan.</p>
-        )}
-        {plan && canImportPlan && conversationMode === "plan" && (
-          <p className="mt-3 text-xs text-muted-foreground border-l-2 border-muted-foreground/30 pl-2">
-            Head to the Planner to review and edit the draft, then come back and use{" "}
-            <span className="font-medium text-foreground">Include Plan</span> to give the AI your
-            updated plan as context for further refinements.
-          </p>
         )}
       </div>
     </div>
@@ -952,8 +940,6 @@ export function CoachPage() {
   type FunnelStep = "mode" | "advice" | "plan";
   const [funnelStep, setFunnelStep] = useState<FunnelStep>("mode");
   const [isCreatingConv, setIsCreatingConv] = useState(false);
-  const [isIncludingPlan, setIsIncludingPlan] = useState(false);
-  const [includedPlanText, setIncludedPlanText] = useState<string | null>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
@@ -997,7 +983,7 @@ export function CoachPage() {
     queryKey: ["plans"],
     queryFn: () => api.get("/plans"),
   });
-  const canImportPlan = plan === null;
+  const canImportPlan = plan === null || plan.status === "draft";
 
   // Active conversation metadata
   const activeConvData = conversations.find((c) => c.id === activeConv);
@@ -1015,7 +1001,6 @@ export function CoachPage() {
 
   useEffect(() => {
     setFailedMessage(null);
-    setIncludedPlanText(null);
   }, [activeConv]);
 
   // Reset funnel when user deselects conversation
@@ -1037,21 +1022,30 @@ export function CoachPage() {
 
   // ── Chat helpers ──────────────────────────────────────────────────────────
 
-  function sendMessage(content?: string, convId?: string) {
+  async function sendMessage(content?: string, convId?: string) {
     const targetConv = convId ?? activeConv;
     if (!targetConv || isStreaming) return;
     const isRetry = content !== undefined && convId === undefined;
     const userText = content ?? inputValue.trim();
-    const msg = userText
-      ? includedPlanText
-        ? `${userText}\n\n${includedPlanText}`
-        : userText
-      : (includedPlanText ?? "");
-    if (!msg) return;
+    if (!userText) return;
+
+    // In plan-mode, always append the current draft plan as context if one exists
+    const convMode =
+      convId != null
+        ? null // first message of a brand-new conv — no draft plan yet
+        : activeConvData?.mode;
+    let msg = userText;
+    if (!isRetry && convMode === "plan" && plan?.status === "draft" && plan.id) {
+      try {
+        const full = await api.get<FullPlan>(`/plans/${plan.id}`);
+        msg = `${userText}\n\n${formatPlanAsText(full)}`;
+      } catch {
+        // silently fall back to sending without plan context
+      }
+    }
 
     if (!isRetry && convId === undefined) {
       setInputValue("");
-      setIncludedPlanText(null);
     }
     setFailedMessage(null);
     setStreamingMsg("");
@@ -1180,37 +1174,12 @@ export function CoachPage() {
     }
   }
 
-  // ── Include plan in input ─────────────────────────────────────────────────
-
-  const planIsIncluded = includedPlanText !== null;
-
-  async function toggleIncludePlan() {
-    if (isIncludingPlan) return;
-
-    if (planIsIncluded) {
-      setIncludedPlanText(null);
-      return;
-    }
-
-    if (!plan?.id) return;
-    setIsIncludingPlan(true);
-    try {
-      const full = await api.get<FullPlan>(`/plans/${plan.id}`);
-      setIncludedPlanText(formatPlanAsText(full));
-    } finally {
-      setIsIncludingPlan(false);
-    }
-  }
-
   // ── Derived values ────────────────────────────────────────────────────────
 
   const showFailedBubble = failedMessage?.convId === activeConv;
   const lastUserMessage = [...lastServerMessagesRef.current]
     .reverse()
     .find((m) => m.role === "user");
-  const planHasBeenGenerated =
-    activeConvData?.mode === "plan" &&
-    messages.some((m) => m.role === "assistant" && m.content.includes("<plan>"));
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1331,13 +1300,23 @@ export function CoachPage() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  onSavePlan={(p) => setPlanToSave(p)}
-                  canImportPlan={canImportPlan}
-                  conversationMode={activeConvData?.mode}
-                />
+                <div key={msg.id}>
+                  <MessageBubble
+                    message={msg}
+                    onSavePlan={(p) => setPlanToSave(p)}
+                    canImportPlan={canImportPlan}
+                  />
+                  {msg.role === "assistant" && extractPlan(msg.content) && (
+                    <div className="flex gap-3 mt-2">
+                      <div className="h-7 w-7 shrink-0" aria-hidden />
+                      <div className="max-w-[80%] rounded-xl bg-primary/5 border border-primary/15 px-4 py-2.5 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Plan exported as draft.</span>{" "}
+                        Head to the Planner to review and edit it, then come back here and keep
+                        chatting — your edits will be included automatically as context.
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
 
               {showFailedBubble && (
@@ -1388,58 +1367,30 @@ export function CoachPage() {
                   another.
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
-                  {planHasBeenGenerated && !planIsIncluded && (
-                    <p className="text-xs text-muted-foreground px-1">
-                      Want to refine the plan? Use{" "}
-                      <span className="font-medium text-foreground">Include Plan</span> to give the
-                      AI your current draft as context.
-                    </p>
-                  )}
-                  {plan !== null && (
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant={planIsIncluded ? "default" : "outline"}
-                        disabled={isIncludingPlan || isStreaming}
-                        onClick={toggleIncludePlan}
-                        className="h-7 text-xs gap-1.5"
-                      >
-                        {isIncludingPlan ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <ClipboardList className="h-3 w-3" />
-                        )}
-                        {planIsIncluded ? "Remove Plan" : "Include Plan"}
-                      </Button>
-                    </div>
-                  )}
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      sendMessage();
-                    }}
-                    className="flex gap-2"
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    sendMessage();
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder="Ask your coach…"
+                    disabled={isStreaming}
+                    className="flex-1 h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                    aria-label="Message input"
+                  />
+                  <Button
+                    type="submit"
+                    size="icon"
+                    disabled={!inputValue.trim() || isStreaming}
+                    aria-label="Send"
                   >
-                    <input
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      placeholder="Ask your coach…"
-                      disabled={isStreaming}
-                      className="flex-1 h-10 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
-                      aria-label="Message input"
-                    />
-                    <Button
-                      type="submit"
-                      size="icon"
-                      disabled={(!inputValue.trim() && !planIsIncluded) || isStreaming}
-                      aria-label="Send"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </form>
-                </div>
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </form>
               )}
             </div>
           </>

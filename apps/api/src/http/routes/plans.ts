@@ -1491,8 +1491,11 @@ export const planRoutes = new Hono()
     const existingPlan = await db.query.trainingPlans.findFirst({
       where: eq(trainingPlans.userId, userId),
     });
-    if (existingPlan) {
-      return c.json({ error: "You already have a training plan." }, 409);
+    if (existingPlan?.status === "active") {
+      return c.json({ error: "You already have an active training plan." }, 409);
+    }
+    if (existingPlan?.status === "draft") {
+      await db.delete(trainingPlans).where(eq(trainingPlans.id, existingPlan.id));
     }
 
     const microcycleLength = Math.max(...data.weeks.flatMap((w) => w.days.map((d) => d.day)), 1);

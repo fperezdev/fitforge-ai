@@ -240,8 +240,16 @@ Do NOT generate full workout plans in this mode — if the user asks for a plan,
 This conversation is strictly for creating and refining a training plan.
 Only discuss the plan itself: exercise selection, structure, volume, progression, and adjustments.
 If the user asks about anything unrelated to the training plan, politely decline and redirect them.
-When you generate the plan, always wrap it in <plan>...</plan> tags as specified above.
-After the plan is delivered, the user may ask for changes — apply them and output a full updated plan in <plan>...</plan> tags each time.`,
+
+When generating a plan:
+- If you have enough context to produce a quality plan, wrap it in <plan>...</plan> tags as specified above.
+- If you need more information before producing a good plan (e.g. schedule availability, specific goals, injuries, equipment), ask the user targeted questions first. Do not generate a plan until you have enough context.
+
+After a plan is delivered:
+- The user may come back with feedback or edits. Their message will include their current draft plan as context.
+- Ask clarifying questions if needed before generating a revised plan.
+- When you are ready to produce an updated plan, output a full new plan in <plan>...</plan> tags.
+- Never output a partial plan — always output the complete plan structure each time.`,
 };
 
 function formatExerciseLibrary(exercises: CoachContext["exercises"]): string {

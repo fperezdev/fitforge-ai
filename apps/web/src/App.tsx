@@ -14,6 +14,7 @@ import { CardioDetailPage } from "@/pages/CardioDetailPage";
 import { CoachPage } from "@/pages/CoachPage";
 import { ProgressPage } from "@/pages/ProgressPage";
 import { ProfilePage } from "@/pages/ProfilePage";
+import { BodyPage } from "@/pages/BodyPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,6 +47,7 @@ export function App() {
               <Route path="/cardio/:id" element={<CardioDetailPage />} />
               <Route path="/coach" element={<CoachPage />} />
               <Route path="/progress" element={<ProgressPage />} />
+              <Route path="/body" element={<BodyPage />} />
               <Route path="/profile" element={<ProfilePage />} />
             </Route>
           </Route>

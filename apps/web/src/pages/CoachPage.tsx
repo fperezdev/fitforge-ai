@@ -327,6 +327,12 @@ function MessageBubble({
             Import as Training Plan
           </button>
         )}
+        <p className={cn("mt-1 text-[10px] opacity-60", isUser ? "text-right" : "text-left")}>
+          {new Date(message.createdAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </p>
       </div>
     </div>
   );
@@ -935,6 +941,8 @@ export function CoachPage() {
   const lastServerMessagesRef = useRef<Message[]>([]);
   const streamControllerRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
 
   // Funnel state: which step the "new chat" pane is on
   type FunnelStep = "mode" | "advice" | "plan";
@@ -996,11 +1004,14 @@ export function CoachPage() {
   }, [messages]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!userScrolledUpRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, streamingMsg, failedMessage]);
 
   useEffect(() => {
     setFailedMessage(null);
+    userScrolledUpRef.current = false;
   }, [activeConv]);
 
   // Reset funnel when user deselects conversation
@@ -1054,6 +1065,7 @@ export function CoachPage() {
     if (isRetry) {
       queryClient.setQueryData<Message[]>(["messages", targetConv], lastServerMessagesRef.current);
     } else {
+      userScrolledUpRef.current = false;
       queryClient.setQueryData<Message[]>(["messages", targetConv], (prev) => [
         ...(prev ?? []),
         {
@@ -1298,7 +1310,16 @@ export function CoachPage() {
         ) : activeConv ? (
           <>
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto p-4 space-y-4"
+              onScroll={() => {
+                const el = scrollContainerRef.current;
+                if (!el) return;
+                const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+                userScrolledUpRef.current = !nearBottom;
+              }}
+            >
               {messages.map((msg) => (
                 <div key={msg.id}>
                   <MessageBubble

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, ilike, ne, inArray, gt, sql } from "drizzle-orm";
+import { eq, and, ne, inArray, gt, sql } from "drizzle-orm";
 import {
   trainingPlans,
   planMicrocycles,
@@ -23,12 +23,8 @@ import type { Muscle } from "@fitforge/types";
 
 const MUSCLES = [
   "chest",
-  "upper_chest",
-  "lower_chest",
   "back",
   "lats",
-  "upper_back",
-  "lower_back",
   "traps",
   "anterior_deltoids",
   "lateral_deltoids",
@@ -120,83 +116,60 @@ const upsertDaySchema = z.object({
   notes: z.string().nullable().optional(),
 });
 
-// ─── Helper: create a workout template from AI exercises ──────────────────────
+// ─── Helper: resolve all exercise names to IDs in two queries max ─────────────
 
-async function createTemplateFromExercises(
+type ExerciseInput = {
+  name: string;
+  primaryMuscle?: string;
+  secondaryMuscles?: string[];
+};
+
+async function resolveExercises(
   db: ReturnType<typeof getDb>,
-  userId: string,
-  name: string,
-  exList: Array<{
-    name: string;
-    primaryMuscle?: string;
-    secondaryMuscles?: string[];
-    sets: number;
-    repMin?: number;
-    repMax?: number;
-    rir?: number;
-    restSeconds?: number;
-  }>,
-): Promise<string | null> {
-  if (exList.length === 0) return null;
+  exInputs: ExerciseInput[],
+): Promise<Map<string, string>> {
+  // Map from lowercase name → id
+  const result = new Map<string, string>();
+  if (exInputs.length === 0) return result;
 
-  const [tmpl] = await db.insert(workoutTemplates).values({ userId, name }).returning();
+  const uniqueNames = [...new Set(exInputs.map((e) => e.name.toLowerCase()))];
 
-  let order = 1;
-  for (const ex of exList) {
-    // Try to find existing exercise by name; auto-create if not found
-    let matched = await db.query.exercises.findFirst({
-      where: ilike(exercises.name, ex.name),
+  // 1. Fetch all existing exercises in one query
+  const existing = await db
+    .select({ id: exercises.id, name: exercises.name })
+    .from(exercises)
+    .where(inArray(sql`lower(${exercises.name})`, uniqueNames));
+
+  for (const row of existing) result.set(row.name.toLowerCase(), row.id);
+
+  // 2. Insert missing exercises in one batch
+  const missing = exInputs.filter((e) => !result.has(e.name.toLowerCase()));
+  if (missing.length > 0) {
+    // Deduplicate by lowercase name — keep first occurrence's muscle data
+    const seen = new Set<string>();
+    const toInsert = missing.filter((e) => {
+      const key = e.name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 
-    if (!matched) {
-      [matched] = await db
-        .insert(exercises)
-        .values({
-          name: ex.name,
-          primaryMuscle: (ex.primaryMuscle ?? "other") as Muscle,
-          secondaryMuscles: (ex.secondaryMuscles ?? []) as Muscle[],
-        })
-        .returning();
-    }
+    const inserted = await db
+      .insert(exercises)
+      .values(
+        toInsert.map((e) => ({
+          name: e.name,
+          primaryMuscle: (e.primaryMuscle ?? "other") as Muscle,
+          secondaryMuscles: (e.secondaryMuscles ?? []) as Muscle[],
+        })),
+      )
+      .onConflictDoNothing()
+      .returning({ id: exercises.id, name: exercises.name });
 
-    await db.insert(templateExercises).values({
-      workoutTemplateId: tmpl.id,
-      exerciseId: matched.id,
-      order: order++,
-      targetSets: ex.sets,
-      targetRepMin: ex.repMin ?? 0,
-      targetRepMax: ex.repMax ?? 0,
-      rir: ex.rir ?? null,
-      restSeconds: ex.restSeconds ?? null,
-    });
+    for (const row of inserted) result.set(row.name.toLowerCase(), row.id);
   }
 
-  return tmpl.id;
-}
-
-// ─── Helper: create a cardio template from AI exercises ───────────────────────
-
-async function createCardioTemplate(
-  db: ReturnType<typeof getDb>,
-  userId: string,
-  name: string,
-  exList: Array<{ name: string; zone?: number; kilometers?: number }>,
-): Promise<string> {
-  const [tmpl] = await db.insert(cardioTemplates).values({ userId, name }).returning();
-
-  if (exList.length > 0) {
-    await db.insert(cardioTemplateExercises).values(
-      exList.map((ex, i) => ({
-        cardioTemplateId: tmpl.id,
-        name: ex.name,
-        zone: ex.zone ?? null,
-        kilometers: ex.kilometers ?? null,
-        order: i + 1,
-      })),
-    );
-  }
-
-  return tmpl.id;
+  return result;
 }
 
 // ─── Plan helper utilities ─────────────────────────────────────────────────────
@@ -216,6 +189,130 @@ function getPlanAnchor(plan: { startDate: string | null; activatedAt: Date | nul
   if (plan.startDate) return new Date(plan.startDate + "T00:00:00Z");
   if (plan.activatedAt) return new Date(plan.activatedAt);
   return null;
+}
+
+/** Deep-clone a day's workout and cardio templates; returns new template IDs. */
+async function cloneTemplatesForDay(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  day: {
+    workoutTemplate: {
+      name: string;
+      templateExercises: {
+        exerciseId: string;
+        order: number;
+        targetSets: number;
+        targetRepMin: number;
+        targetRepMax: number;
+        rir: number | null;
+        restSeconds: number | null;
+      }[];
+    } | null;
+    cardioTemplate: {
+      name: string;
+      cardioTemplateExercises: {
+        name: string;
+        zone: number | null;
+        kilometers: number | null;
+        order: number;
+      }[];
+    } | null;
+  },
+): Promise<{ workoutTemplateId: string | null; cardioTemplateId: string | null }> {
+  const [newWorkoutTemplateId, newCardioTemplateId] = await Promise.all([
+    (async () => {
+      if (!day.workoutTemplate) return null;
+      const [tmpl] = await db
+        .insert(workoutTemplates)
+        .values({ userId, name: day.workoutTemplate.name })
+        .returning();
+      if (day.workoutTemplate.templateExercises.length > 0) {
+        await db.insert(templateExercises).values(
+          day.workoutTemplate.templateExercises.map((te) => ({
+            workoutTemplateId: tmpl.id,
+            exerciseId: te.exerciseId,
+            order: te.order,
+            targetSets: te.targetSets,
+            targetRepMin: te.targetRepMin,
+            targetRepMax: te.targetRepMax,
+            rir: te.rir,
+            restSeconds: te.restSeconds,
+          })),
+        );
+      }
+      return tmpl.id;
+    })(),
+    (async () => {
+      if (!day.cardioTemplate) return null;
+      const [tmpl] = await db
+        .insert(cardioTemplates)
+        .values({ userId, name: day.cardioTemplate.name })
+        .returning();
+      if (day.cardioTemplate.cardioTemplateExercises.length > 0) {
+        await db.insert(cardioTemplateExercises).values(
+          day.cardioTemplate.cardioTemplateExercises.map((ce) => ({
+            cardioTemplateId: tmpl.id,
+            name: ce.name,
+            zone: ce.zone,
+            kilometers: ce.kilometers,
+            order: ce.order,
+          })),
+        );
+      }
+      return tmpl.id;
+    })(),
+  ]);
+  return { workoutTemplateId: newWorkoutTemplateId, cardioTemplateId: newCardioTemplateId };
+}
+
+/** Add a blank microcycle at the next position and return it (shared by add-week and clone-week). */
+async function addMicrocycle(
+  db: ReturnType<typeof getDb>,
+  planId: string,
+  microcycleLength: number,
+  currentMicrocycles: { position: number }[],
+  name?: string | null,
+) {
+  const nextPosition =
+    (currentMicrocycles.length > 0 ? Math.max(...currentMicrocycles.map((m) => m.position)) : 0) +
+    1;
+  const [mc] = await db
+    .insert(planMicrocycles)
+    .values({ trainingPlanId: planId, position: nextPosition, name: name ?? null })
+    .returning();
+  const dayRows = Array.from({ length: microcycleLength }, (_, i) => ({
+    planMicrocycleId: mc.id,
+    dayNumber: i + 1,
+    type: "training" as const,
+  }));
+  if (dayRows.length > 0) await db.insert(planDays).values(dayRows);
+  await db
+    .update(trainingPlans)
+    .set({ mesocycleLength: nextPosition, updatedAt: new Date() })
+    .where(eq(trainingPlans.id, planId));
+  return mc;
+}
+
+/** Extend every microcycle by one empty day and return the new day number (shared by extend and clone-day). */
+async function extendDays(
+  db: ReturnType<typeof getDb>,
+  planId: string,
+  microcycles: { id: string }[],
+  currentLength: number,
+) {
+  const newDayNumber = currentLength + 1;
+  await db.insert(planDays).values(
+    microcycles.map((mc) => ({
+      planMicrocycleId: mc.id,
+      dayNumber: newDayNumber,
+      type: "training" as const,
+    })),
+  );
+  await db
+    .update(trainingPlans)
+    .set({ microcycleLength: newDayNumber, updatedAt: new Date() })
+    .where(eq(trainingPlans.id, planId));
+  return newDayNumber;
 }
 
 export const planRoutes = new Hono()
@@ -1203,28 +1300,114 @@ export const planRoutes = new Hono()
     });
     if (!plan) return c.json({ error: "Plan not found" }, 404);
 
-    const nextPosition =
-      (plan.microcycles.length > 0 ? Math.max(...plan.microcycles.map((m) => m.position)) : 0) + 1;
-
-    const [mc] = await db
-      .insert(planMicrocycles)
-      .values({ trainingPlanId: id, position: nextPosition })
-      .returning();
-
-    const dayRows = Array.from({ length: plan.microcycleLength }, (_, i) => ({
-      planMicrocycleId: mc.id,
-      dayNumber: i + 1,
-      type: "training" as const,
-    }));
-    if (dayRows.length > 0) await db.insert(planDays).values(dayRows);
-
-    // Update mesocycleLength
-    await db
-      .update(trainingPlans)
-      .set({ mesocycleLength: nextPosition, updatedAt: new Date() })
-      .where(eq(trainingPlans.id, id));
-
+    const mc = await addMicrocycle(db, id, plan.microcycleLength, plan.microcycles);
     return c.json(mc, 201);
+  })
+
+  // Clone a week — adds a new week pre-filled with deep-copied templates
+  .post("/:id/microcycles/:micId/clone", async (c) => {
+    const userId = getUserId(c);
+    const { id, micId } = c.req.param();
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.id, id), eq(trainingPlans.userId, userId)),
+      with: { microcycles: true },
+    });
+    if (!plan) return c.json({ error: "Plan not found" }, 404);
+
+    const sourceMc = await db.query.planMicrocycles.findFirst({
+      where: and(eq(planMicrocycles.id, micId), eq(planMicrocycles.trainingPlanId, id)),
+      with: {
+        days: {
+          orderBy: (pd, { asc }) => [asc(pd.dayNumber)],
+          with: {
+            workoutTemplate: { with: { templateExercises: true } },
+            cardioTemplate: { with: { cardioTemplateExercises: true } },
+          },
+        },
+      },
+    });
+    if (!sourceMc) return c.json({ error: "Week not found" }, 404);
+
+    // Create blank week (reuses addMicrocycle — inserts empty day stubs)
+    const newMc = await addMicrocycle(
+      db,
+      id,
+      plan.microcycleLength,
+      plan.microcycles,
+      sourceMc.name,
+    );
+
+    // Overwrite each stub with cloned templates in parallel
+    await Promise.all(
+      sourceMc.days.map(async (day) => {
+        const { workoutTemplateId, cardioTemplateId } = await cloneTemplatesForDay(db, userId, day);
+        await db
+          .update(planDays)
+          .set({
+            type: day.type as "training" | "rest",
+            workoutTemplateId,
+            cardioTemplateId,
+            notes: day.notes,
+          })
+          .where(
+            and(eq(planDays.planMicrocycleId, newMc.id), eq(planDays.dayNumber, day.dayNumber)),
+          );
+      }),
+    );
+
+    return c.json({ id: newMc.id }, 201);
+  })
+
+  // Clone a day — extends the grid by one column, then fills the source week's new slot
+  .post("/:id/microcycles/:micId/days/:dayNum/clone", async (c) => {
+    const userId = getUserId(c);
+    const { id, micId, dayNum } = c.req.param();
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.id, id), eq(trainingPlans.userId, userId)),
+      with: { microcycles: true },
+    });
+    if (!plan) return c.json({ error: "Plan not found" }, 404);
+
+    const sourceMc = await db.query.planMicrocycles.findFirst({
+      where: and(eq(planMicrocycles.id, micId), eq(planMicrocycles.trainingPlanId, id)),
+      with: {
+        days: {
+          with: {
+            workoutTemplate: { with: { templateExercises: true } },
+            cardioTemplate: { with: { cardioTemplateExercises: true } },
+          },
+        },
+      },
+    });
+    if (!sourceMc) return c.json({ error: "Week not found" }, 404);
+
+    const sourceDay = sourceMc.days.find((d) => d.dayNumber === Number(dayNum));
+    if (!sourceDay) return c.json({ error: "Day not found" }, 404);
+
+    // Extend every week by one empty stub (reuses extendDays)
+    const newDayNumber = await extendDays(db, id, plan.microcycles, plan.microcycleLength);
+
+    // Clone templates and overwrite the stub in the source week only
+    const { workoutTemplateId, cardioTemplateId } = await cloneTemplatesForDay(
+      db,
+      userId,
+      sourceDay,
+    );
+    await db
+      .update(planDays)
+      .set({
+        type: sourceDay.type as "training" | "rest",
+        workoutTemplateId,
+        cardioTemplateId,
+        notes: sourceDay.notes,
+      })
+      .where(and(eq(planDays.planMicrocycleId, micId), eq(planDays.dayNumber, newDayNumber)));
+
+    return c.json({ dayNumber: newDayNumber }, 201);
   })
 
   // Add a day to every week (increment microcycleLength globally)
@@ -1239,23 +1422,11 @@ export const planRoutes = new Hono()
     });
     if (!plan) return c.json({ error: "Plan not found" }, 404);
 
-    const newDayNumber = plan.microcycleLength + 1;
+    await extendDays(db, id, plan.microcycles, plan.microcycleLength);
 
-    // Insert one new day stub per microcycle
-    for (const mc of plan.microcycles) {
-      await db.insert(planDays).values({
-        planMicrocycleId: mc.id,
-        dayNumber: newDayNumber,
-        type: "training",
-      });
-    }
-
-    const [updated] = await db
-      .update(trainingPlans)
-      .set({ microcycleLength: newDayNumber, updatedAt: new Date() })
-      .where(eq(trainingPlans.id, id))
-      .returning();
-
+    const updated = await db.query.trainingPlans.findFirst({
+      where: eq(trainingPlans.id, id),
+    });
     return c.json(updated);
   })
 
@@ -1488,6 +1659,7 @@ export const planRoutes = new Hono()
     const data = c.req.valid("json");
     const db = getDb();
 
+    // ── Guard: block if active plan exists; delete stale draft ───────────────
     const existingPlan = await db.query.trainingPlans.findFirst({
       where: eq(trainingPlans.userId, userId),
     });
@@ -1499,8 +1671,14 @@ export const planRoutes = new Hono()
     }
 
     const microcycleLength = Math.max(...data.weeks.flatMap((w) => w.days.map((d) => d.day)), 1);
-    const mesocycleLength = data.weeks.length;
 
+    // ── 1. Resolve all exercises in two queries (SELECT + INSERT missing) ────
+    const allStrengthExercises = data.weeks
+      .flatMap((w) => w.days)
+      .flatMap((d) => d.workout?.exercises ?? []);
+    const exerciseIdMap = await resolveExercises(db, allStrengthExercises);
+
+    // ── 2. Insert the plan (1 query) ─────────────────────────────────────────
     const [plan] = await db
       .insert(trainingPlans)
       .values({
@@ -1508,57 +1686,110 @@ export const planRoutes = new Hono()
         name: data.name,
         description: data.description ?? null,
         microcycleLength,
-        mesocycleLength,
+        mesocycleLength: data.weeks.length,
       })
       .returning();
 
-    for (const week of data.weeks) {
-      const [mc] = await db
-        .insert(planMicrocycles)
-        .values({ trainingPlanId: plan.id, position: week.week })
-        .returning();
+    // ── 3. Insert all microcycles in one batch ────────────────────────────────
+    const microcycleRows = await db
+      .insert(planMicrocycles)
+      .values(data.weeks.map((w) => ({ trainingPlanId: plan.id, position: w.week })))
+      .returning();
 
-      // Fill all day slots; days not specified by AI get empty training stubs
-      for (let dayNum = 1; dayNum <= microcycleLength; dayNum++) {
-        const day = week.days.find((d) => d.day === dayNum);
+    // ── 4. For each week, build all templates + days in parallel ─────────────
+    await Promise.all(
+      data.weeks.map(async (week, wi) => {
+        const mc = microcycleRows[wi];
 
-        if (!day) {
-          await db.insert(planDays).values({
+        // Collect all training days that need templates
+        type DayTemplateResult = {
+          dayNum: number;
+          strengthTemplateId: string | null;
+          cardioTemplateId: string | null;
+          isRest: boolean;
+          restNote?: string | null;
+        };
+
+        // Process every day slot in parallel
+        const dayResults = await Promise.all(
+          Array.from({ length: microcycleLength }, async (_, i): Promise<DayTemplateResult> => {
+            const dayNum = i + 1;
+            const day = week.days.find((d) => d.day === dayNum);
+
+            if (!day || day.rest) {
+              return {
+                dayNum,
+                strengthTemplateId: null,
+                cardioTemplateId: null,
+                isRest: day?.rest === true,
+                restNote: day?.restNote,
+              };
+            }
+
+            // Strength and cardio templates are independent — create in parallel
+            const [strengthTemplateId, cardioTemplateId] = await Promise.all([
+              // Strength template
+              (async () => {
+                const exList = day.workout?.exercises ?? [];
+                if (!day.workout || exList.length === 0) return null;
+                const [tmpl] = await db
+                  .insert(workoutTemplates)
+                  .values({ userId, name: day.workout.name })
+                  .returning();
+                if (exList.length > 0) {
+                  await db.insert(templateExercises).values(
+                    exList.map((ex, order) => ({
+                      workoutTemplateId: tmpl.id,
+                      exerciseId: exerciseIdMap.get(ex.name.toLowerCase()) ?? "",
+                      order: order + 1,
+                      targetSets: ex.sets,
+                      targetRepMin: ex.repMin ?? 0,
+                      targetRepMax: ex.repMax ?? 0,
+                      rir: ex.rir ?? null,
+                      restSeconds: ex.restSeconds ?? null,
+                    })),
+                  );
+                }
+                return tmpl.id;
+              })(),
+              // Cardio template
+              (async () => {
+                const exList = day.cardio?.exercises ?? [];
+                if (!day.cardio || exList.length === 0) return null;
+                const [tmpl] = await db
+                  .insert(cardioTemplates)
+                  .values({ userId, name: day.cardio.name })
+                  .returning();
+                await db.insert(cardioTemplateExercises).values(
+                  exList.map((ex, order) => ({
+                    cardioTemplateId: tmpl.id,
+                    name: ex.name,
+                    zone: ex.zone ?? null,
+                    kilometers: ex.kilometers ?? null,
+                    order: order + 1,
+                  })),
+                );
+                return tmpl.id;
+              })(),
+            ]);
+
+            return { dayNum, strengthTemplateId, cardioTemplateId, isRest: false };
+          }),
+        );
+
+        // ── 5. Batch insert all plan_days for this week in one query ──────────
+        await db.insert(planDays).values(
+          dayResults.map((r) => ({
             planMicrocycleId: mc.id,
-            dayNumber: dayNum,
-            type: "training",
-          });
-          continue;
-        }
-
-        if (day.rest) {
-          await db.insert(planDays).values({
-            planMicrocycleId: mc.id,
-            dayNumber: dayNum,
-            type: "rest",
-            notes: day.restNote ?? null,
-          });
-          continue;
-        }
-
-        const strengthTemplateId = day.workout
-          ? await createTemplateFromExercises(db, userId, day.workout.name, day.workout.exercises)
-          : null;
-
-        const cardioTemplateId = day.cardio
-          ? await createCardioTemplate(db, userId, day.cardio.name, day.cardio.exercises)
-          : null;
-
-        await db.insert(planDays).values({
-          planMicrocycleId: mc.id,
-          dayNumber: dayNum,
-          type: "training",
-          workoutTemplateId: strengthTemplateId,
-          cardioTemplateId,
-          notes: null,
-        });
-      }
-    }
+            dayNumber: r.dayNum,
+            type: r.isRest ? ("rest" as const) : ("training" as const),
+            workoutTemplateId: r.strengthTemplateId,
+            cardioTemplateId: r.cardioTemplateId,
+            notes: r.isRest ? (r.restNote ?? null) : null,
+          })),
+        );
+      }),
+    );
 
     return c.json({ id: plan.id }, 201);
   });

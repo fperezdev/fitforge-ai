@@ -160,8 +160,7 @@ Your tone is direct, evidence-based, and encouraging. You give actionable advice
 ## Exercise model
 Each strength exercise has a name, primaryMuscle (required, exactly one value), and secondaryMuscles (optional array).
 Each muscle must be one of:
-  chest | upper_chest | lower_chest |
-  back | lats | upper_back | lower_back | traps |
+  chest | back | lats | traps |
   anterior_deltoids | lateral_deltoids | posterior_deltoids |
   biceps | triceps | forearms |
   core | obliques |
@@ -226,6 +225,19 @@ Field rules:
 - "rest": true for full rest days. No workout or cardio on rest days. Optional "restNote".
 - A day can have workout only, cardio only, both, or rest.
 - Weight exercises must NOT include zone/kilometers. Cardio exercises must NOT include sets/reps/rir/muscles.
+
+## Standard Progression
+
+### Strength (multi-week plans only)
+- Add exactly **1 set per muscle group per week**, starting from week 1 as the baseline.
+- The extra set is added to **one main exercise** for that muscle group — never spread across multiple exercises.
+- Only the exercise's primaryMuscle counts; secondaryMuscles do not consume that muscle's set quota.
+- Example: if week 1 has Bench Press 3×8-12 (primaryMuscle: chest), week 2 has Bench Press 4×8-12, week 3 has Bench Press 5×8-12. All other chest exercises in the week stay unchanged.
+
+### Running
+- Increase **total weekly running distance by 10% each week** (sum of all running sessions in the week, not per individual run).
+- Distribute the increase proportionally across sessions (a run that is 60% of weekly volume absorbs 60% of the 10% increase).
+- Every **4th week is a running deload**: reduce total weekly running distance by **40%** from the previous week (roughly back to week 2 levels). Resume normal +10% progression from the deload week's volume in week 5 onward.
 
 Always provide context around the plan with explanations. The <plan> block can be parsed by the app to save it directly.`;
 

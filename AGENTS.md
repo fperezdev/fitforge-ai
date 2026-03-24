@@ -9,3 +9,5 @@
 - When creating or updating UI componentes use .agents/skill/interface-design skill.
 
 - Do not use any other skill unless explicitely required.
+
+- The muscle enum does not have specific sub-muscles. Use only the top-level values: chest, back, lats, traps, anterior_deltoids, lateral_deltoids, posterior_deltoids, biceps, triceps, forearms, core, obliques, glutes, quadriceps, hamstrings, calves, soleus, hip_flexors, adductors, full_body, other. Never use upper_chest, lower_chest, upper_back, lower_back, or any other sub-muscle variant.

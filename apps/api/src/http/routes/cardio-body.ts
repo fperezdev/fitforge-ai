@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import {
   cardioSessions,
   cardioSplits,
@@ -197,9 +197,25 @@ export const bodyRoutes = new Hono()
     const [entry] = await db
       .insert(weightEntries)
       .values({ userId, ...data })
+      .onConflictDoUpdate({
+        target: [weightEntries.userId, weightEntries.date],
+        set: { weightKg: sql`excluded.weight_kg`, notes: sql`excluded.notes` },
+      })
       .returning();
 
     return c.json(entry, 201);
+  })
+
+  .delete("/weight/:date", async (c) => {
+    const userId = getUserId(c);
+    const { date } = c.req.param();
+    const db = getDb();
+
+    await db
+      .delete(weightEntries)
+      .where(and(eq(weightEntries.userId, userId), eq(weightEntries.date, date)));
+
+    return c.json({ success: true });
   })
 
   .get("/measurements", async (c) => {

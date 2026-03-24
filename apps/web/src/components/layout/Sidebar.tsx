@@ -10,6 +10,7 @@ import {
   LogOut,
   UserCircle,
   Ellipsis,
+  Scale,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
@@ -22,6 +23,7 @@ const navItems = [
   { to: "/progress", icon: TrendingUp, label: "Progress" },
   { to: "/workout", icon: Dumbbell, label: "Workout" },
   { to: "/cardio", icon: Activity, label: "Cardio" },
+  { to: "/body", icon: Scale, label: "Body" },
   { to: "/profile", icon: UserCircle, label: "Profile" },
 ];
 

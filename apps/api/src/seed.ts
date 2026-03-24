@@ -13,7 +13,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { createDb, exercises, userProfiles } from "@fitforge/db";
-import { eq } from "drizzle-orm";
+import { eq, notInArray } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
 // Config — read from environment (loaded via --env-file flag in the npm script)
@@ -44,12 +44,8 @@ const TEST_USER = {
 
 type MuscleValue =
   | "chest"
-  | "upper_chest"
-  | "lower_chest"
   | "back"
   | "lats"
-  | "upper_back"
-  | "lower_back"
   | "traps"
   | "anterior_deltoids"
   | "lateral_deltoids"
@@ -79,44 +75,44 @@ interface ExerciseSeed {
 const EXERCISES: ExerciseSeed[] = [
   // ── Chest ────────────────────────────────────────────────────────────────
   {
-    name: "Barbell Bench Press",
+    name: "Bench Press (Barbell)",
     primaryMuscle: "chest",
     secondaryMuscles: ["anterior_deltoids", "triceps"],
     requiredEquipment: ["barbell", "rack"],
   },
   {
-    name: "Dumbbell Flat Bench Press",
+    name: "Bench Press (Dumbbell)",
     primaryMuscle: "chest",
     secondaryMuscles: ["anterior_deltoids", "triceps"],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Barbell Incline Press",
-    primaryMuscle: "upper_chest",
+    name: "Incline Press (Barbell)",
+    primaryMuscle: "chest",
     secondaryMuscles: ["anterior_deltoids", "triceps"],
     requiredEquipment: ["barbell", "rack"],
   },
   {
-    name: "Dumbbell Incline Press",
-    primaryMuscle: "upper_chest",
+    name: "Incline Press (Dumbbell)",
+    primaryMuscle: "chest",
     secondaryMuscles: ["anterior_deltoids", "triceps"],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Cable Chest Fly",
+    name: "Chest Fly (Cable)",
     primaryMuscle: "chest",
     secondaryMuscles: ["anterior_deltoids"],
     requiredEquipment: ["cables"],
   },
   {
-    name: "Assisted Dips",
+    name: "Dips (Assisted)",
     primaryMuscle: "chest",
     secondaryMuscles: ["triceps", "anterior_deltoids"],
     requiredEquipment: ["dip_bars"],
   },
   {
     name: "Chest Dip",
-    primaryMuscle: "lower_chest",
+    primaryMuscle: "chest",
     secondaryMuscles: ["triceps", "anterior_deltoids"],
     requiredEquipment: ["dip_bars"],
   },
@@ -127,7 +123,7 @@ const EXERCISES: ExerciseSeed[] = [
     requiredEquipment: [],
   },
   {
-    name: "Machine Chest Press",
+    name: "Chest Press (Machine)",
     primaryMuscle: "chest",
     secondaryMuscles: ["anterior_deltoids", "triceps"],
     requiredEquipment: ["chest_press_machine"],
@@ -143,49 +139,49 @@ const EXERCISES: ExerciseSeed[] = [
   {
     name: "Pull-Up",
     primaryMuscle: "lats",
-    secondaryMuscles: ["biceps", "upper_back"],
+    secondaryMuscles: ["biceps", "back"],
     requiredEquipment: ["pullup_bar"],
   },
   {
-    name: "Assisted Pull-Up",
+    name: "Pull-Up (Assisted)",
     primaryMuscle: "lats",
     secondaryMuscles: ["biceps"],
     requiredEquipment: ["pullup_bar", "lat_pulldown_machine"],
   },
   {
-    name: "Barbell Row",
+    name: "Row (Barbell)",
     primaryMuscle: "back",
     secondaryMuscles: ["lats", "biceps", "traps"],
     requiredEquipment: ["barbell"],
   },
   {
-    name: "Dumbbell Unilateral Row",
+    name: "Row (Dumbbell, Unilateral)",
     primaryMuscle: "lats",
     secondaryMuscles: ["biceps", "posterior_deltoids", "core"],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Close-Grip Lat Pulldown",
+    name: "Lat Pulldown (Close Grip)",
     primaryMuscle: "lats",
     secondaryMuscles: ["biceps"],
     requiredEquipment: ["lat_pulldown_machine"],
   },
   {
-    name: "Wide-Grip Lat Pulldown",
+    name: "Lat Pulldown (Wide Grip)",
     primaryMuscle: "lats",
-    secondaryMuscles: ["biceps", "upper_back"],
+    secondaryMuscles: ["biceps", "back"],
     requiredEquipment: ["lat_pulldown_machine"],
   },
   {
-    name: "Neutral-Grip Cable Row",
+    name: "Row (Cable, Neutral Grip)",
     primaryMuscle: "lats",
     secondaryMuscles: ["biceps", "traps"],
     requiredEquipment: ["cables", "seated_row_machine"],
   },
   {
-    name: "Wide-Grip Cable Row",
+    name: "Row (Cable, Wide Grip)",
     primaryMuscle: "lats",
-    secondaryMuscles: ["biceps", "upper_back"],
+    secondaryMuscles: ["biceps", "back"],
     requiredEquipment: ["cables", "seated_row_machine"],
   },
   {
@@ -195,13 +191,13 @@ const EXERCISES: ExerciseSeed[] = [
     requiredEquipment: ["barbell"],
   },
   {
-    name: "Dumbbell Shrug",
+    name: "Shrug (Dumbbell)",
     primaryMuscle: "traps",
     secondaryMuscles: [],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Barbell Shrug",
+    name: "Shrug (Barbell)",
     primaryMuscle: "traps",
     secondaryMuscles: [],
     requiredEquipment: ["barbell"],
@@ -209,31 +205,31 @@ const EXERCISES: ExerciseSeed[] = [
 
   // ── Shoulders ────────────────────────────────────────────────────────────
   {
-    name: "Barbell Overhead Press",
+    name: "Overhead Press (Barbell)",
     primaryMuscle: "anterior_deltoids",
     secondaryMuscles: ["lateral_deltoids", "triceps", "core"],
     requiredEquipment: ["barbell"],
   },
   {
-    name: "Dumbbell Overhead Press",
+    name: "Overhead Press (Dumbbell)",
     primaryMuscle: "anterior_deltoids",
     secondaryMuscles: ["lateral_deltoids", "triceps"],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Dumbbell Lateral Raise",
+    name: "Lateral Raise (Dumbbell)",
     primaryMuscle: "lateral_deltoids",
     secondaryMuscles: [],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Cable Lateral Raise",
+    name: "Lateral Raise (Cable)",
     primaryMuscle: "lateral_deltoids",
     secondaryMuscles: [],
     requiredEquipment: ["cables"],
   },
   {
-    name: "Dumbbell Front Raise",
+    name: "Front Raise (Dumbbell)",
     primaryMuscle: "anterior_deltoids",
     secondaryMuscles: [],
     requiredEquipment: ["dumbbells"],
@@ -241,61 +237,61 @@ const EXERCISES: ExerciseSeed[] = [
   {
     name: "Face Pull",
     primaryMuscle: "posterior_deltoids",
-    secondaryMuscles: ["traps", "upper_back"],
+    secondaryMuscles: ["traps", "back"],
     requiredEquipment: ["cables"],
   },
   {
     name: "Reverse Pec Deck",
     primaryMuscle: "posterior_deltoids",
-    secondaryMuscles: ["upper_back"],
+    secondaryMuscles: ["back"],
     requiredEquipment: ["pec_deck_machine"],
   },
 
   // ── Arms ─────────────────────────────────────────────────────────────────
   {
-    name: "Barbell Bicep Curl",
+    name: "Bicep Curl (Barbell)",
     primaryMuscle: "biceps",
     secondaryMuscles: ["forearms"],
     requiredEquipment: ["barbell"],
   },
   {
-    name: "EZ-Bar Bicep Curl",
+    name: "Bicep Curl (EZ-Bar)",
     primaryMuscle: "biceps",
     secondaryMuscles: ["forearms"],
     requiredEquipment: ["ez_bar"],
   },
   {
-    name: "Dumbbell Bicep Curl",
+    name: "Bicep Curl (Dumbbell)",
     primaryMuscle: "biceps",
     secondaryMuscles: ["forearms"],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Dumbbell Hammer Curl",
+    name: "Hammer Curl (Dumbbell)",
     primaryMuscle: "biceps",
     secondaryMuscles: ["forearms"],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Cable Bicep Curl",
+    name: "Bicep Curl (Cable)",
     primaryMuscle: "biceps",
     secondaryMuscles: [],
     requiredEquipment: ["cables"],
   },
   {
-    name: "Cable Tricep Pushdown",
+    name: "Tricep Pushdown (Cable)",
     primaryMuscle: "triceps",
     secondaryMuscles: [],
     requiredEquipment: ["cables"],
   },
   {
-    name: "Overhead Dumbbell Tricep Extension",
+    name: "Tricep Extension (Dumbbell, Overhead)",
     primaryMuscle: "triceps",
     secondaryMuscles: [],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Overhead Cable Tricep Extension",
+    name: "Tricep Extension (Cable, Overhead)",
     primaryMuscle: "triceps",
     secondaryMuscles: [],
     requiredEquipment: ["cables"],
@@ -315,13 +311,13 @@ const EXERCISES: ExerciseSeed[] = [
 
   // ── Legs — Quads ─────────────────────────────────────────────────────────
   {
-    name: "Barbell Back Squat",
+    name: "Back Squat (Barbell)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: ["glutes", "hamstrings", "core"],
     requiredEquipment: ["barbell", "rack"],
   },
   {
-    name: "Barbell Front Squat",
+    name: "Front Squat (Barbell)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: ["glutes", "core"],
     requiredEquipment: ["barbell", "rack"],
@@ -333,43 +329,43 @@ const EXERCISES: ExerciseSeed[] = [
     requiredEquipment: ["leg_press"],
   },
   {
-    name: "High-Foot Leg Press",
+    name: "Leg Press (High Foot)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: ["glutes"],
     requiredEquipment: ["leg_press"],
   },
   {
-    name: "Machine Leg Extension",
+    name: "Leg Extension (Machine)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: [],
     requiredEquipment: ["leg_extension_machine"],
   },
   {
-    name: "Barbell Bulgarian Split Squat",
+    name: "Bulgarian Split Squat (Barbell)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: ["glutes", "hamstrings"],
     requiredEquipment: ["barbell"],
   },
   {
-    name: "Dumbbell Bulgarian Split Squat",
+    name: "Bulgarian Split Squat (Dumbbell)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: ["glutes", "hamstrings"],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Walking Lunge",
+    name: "Lunge (Walking)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: ["glutes", "hamstrings"],
     requiredEquipment: [],
   },
   {
-    name: "Reverse Nordic Curl",
+    name: "Nordic Curl (Reverse)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: ["hip_flexors"],
     requiredEquipment: [],
   },
   {
-    name: "Isometric Wall Sit",
+    name: "Wall Sit (Isometric)",
     primaryMuscle: "quadriceps",
     secondaryMuscles: [],
     requiredEquipment: [],
@@ -377,19 +373,19 @@ const EXERCISES: ExerciseSeed[] = [
 
   // ── Legs — Hamstrings & Glutes ───────────────────────────────────────────
   {
-    name: "Barbell Romanian Deadlift",
+    name: "Romanian Deadlift (Barbell)",
     primaryMuscle: "hamstrings",
-    secondaryMuscles: ["glutes", "lower_back"],
+    secondaryMuscles: ["glutes", "back"],
     requiredEquipment: ["barbell"],
   },
   {
-    name: "Dumbbell Romanian Deadlift",
+    name: "Romanian Deadlift (Dumbbell)",
     primaryMuscle: "hamstrings",
-    secondaryMuscles: ["glutes", "lower_back"],
+    secondaryMuscles: ["glutes", "back"],
     requiredEquipment: ["dumbbells"],
   },
   {
-    name: "Lying / Seated Leg Curl",
+    name: "Leg Curl (Machine)",
     primaryMuscle: "hamstrings",
     secondaryMuscles: [],
     requiredEquipment: ["leg_curl_machine"],
@@ -419,7 +415,7 @@ const EXERCISES: ExerciseSeed[] = [
     requiredEquipment: ["hip_thrust_machine"],
   },
   {
-    name: "Cable Kickback",
+    name: "Kickback (Cable)",
     primaryMuscle: "glutes",
     secondaryMuscles: ["hamstrings"],
     requiredEquipment: ["cables"],
@@ -427,19 +423,19 @@ const EXERCISES: ExerciseSeed[] = [
 
   // ── Calves ───────────────────────────────────────────────────────────────
   {
-    name: "Standing Calf Raise",
+    name: "Calf Raise (Standing)",
     primaryMuscle: "calves",
     secondaryMuscles: ["soleus"],
     requiredEquipment: [],
   },
   {
-    name: "Machine Calf Raise",
+    name: "Calf Raise (Machine)",
     primaryMuscle: "calves",
     secondaryMuscles: ["soleus"],
     requiredEquipment: ["calf_raise_machine"],
   },
   {
-    name: "Seated Calf Raise",
+    name: "Calf Raise (Seated)",
     primaryMuscle: "soleus",
     secondaryMuscles: ["calves"],
     requiredEquipment: ["seated_calf_raise_machine"],
@@ -451,7 +447,7 @@ const EXERCISES: ExerciseSeed[] = [
     requiredEquipment: [],
   },
   {
-    name: "Weighted Achilles Eccentric",
+    name: "Achilles Eccentric (Weighted)",
     primaryMuscle: "soleus",
     secondaryMuscles: [],
     requiredEquipment: ["barbell", "dumbbells"],
@@ -477,13 +473,19 @@ const EXERCISES: ExerciseSeed[] = [
     requiredEquipment: [],
   },
   {
-    name: "Cable Crunch",
+    name: "Crunch (Cable)",
     primaryMuscle: "core",
     secondaryMuscles: [],
     requiredEquipment: ["cables"],
   },
   {
-    name: "Hanging Leg Raise",
+    name: "Ab Crunch",
+    primaryMuscle: "core",
+    secondaryMuscles: [],
+    requiredEquipment: [],
+  },
+  {
+    name: "Leg Raise (Hanging)",
     primaryMuscle: "core",
     secondaryMuscles: ["hip_flexors"],
     requiredEquipment: ["pullup_bar"],
@@ -491,7 +493,7 @@ const EXERCISES: ExerciseSeed[] = [
   {
     name: "Ab Wheel Rollout",
     primaryMuscle: "core",
-    secondaryMuscles: ["obliques", "lower_back"],
+    secondaryMuscles: ["obliques", "back"],
     requiredEquipment: ["ab_wheel"],
   },
   {
@@ -541,7 +543,7 @@ const EXERCISES: ExerciseSeed[] = [
     requiredEquipment: [],
   },
   {
-    name: "Kettlebell Swing",
+    name: "Swing (Kettlebell)",
     primaryMuscle: "glutes",
     secondaryMuscles: ["hamstrings", "core", "back"],
     requiredEquipment: ["kettlebells"],
@@ -616,6 +618,18 @@ async function main() {
   // ── 2. Exercises ─────────────────────────────────────────────────────────
 
   log(`\n[2/2] Seeding ${EXERCISES.length} exercises...`);
+
+  const canonicalNames = EXERCISES.map((e) => e.name);
+
+  // Remove any exercises whose names are no longer in the canonical list
+  const removed = await db
+    .delete(exercises)
+    .where(notInArray(exercises.name, canonicalNames))
+    .returning({ name: exercises.name });
+
+  if (removed.length > 0) {
+    log(`  Removed ${removed.length} stale exercises: ${removed.map((e) => e.name).join(", ")}`);
+  }
 
   let inserted = 0;
   let skipped = 0;

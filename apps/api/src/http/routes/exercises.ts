@@ -8,12 +8,8 @@ import { authMiddleware } from "../middleware/auth.js";
 
 export const MUSCLES = [
   "chest",
-  "upper_chest",
-  "lower_chest",
   "back",
   "lats",
-  "upper_back",
-  "lower_back",
   "traps",
   "anterior_deltoids",
   "lateral_deltoids",

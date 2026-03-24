@@ -16,12 +16,8 @@ import { relations, sql, ne } from "drizzle-orm";
 
 export const muscleEnum = pgEnum("muscle", [
   "chest",
-  "upper_chest",
-  "lower_chest",
   "back",
   "lats",
-  "upper_back",
-  "lower_back",
   "traps",
   "anterior_deltoids",
   "lateral_deltoids",
@@ -376,7 +372,7 @@ export const trainingPlans = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    name: varchar("name", { length: 255 }).notNull(),
+    name: varchar("name", { length: 255 }).notNull().unique(),
     description: text("description"),
     status: varchar("status", { length: 50 }).notNull().default("draft"), // 'draft' | 'active' | 'completed'
     microcycleLength: integer("microcycle_length").notNull().default(7),

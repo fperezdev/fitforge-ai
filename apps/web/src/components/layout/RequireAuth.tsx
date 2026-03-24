@@ -18,6 +18,14 @@ export function RequireAuth() {
     enabled: !!user,
   });
 
+  // Load all exercises into memory at startup — staleTime Infinity avoids re-fetching
+  useQuery({
+    queryKey: ["exercises"],
+    queryFn: () => api.get("/exercises"),
+    enabled: !!user,
+    staleTime: Infinity,
+  });
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">

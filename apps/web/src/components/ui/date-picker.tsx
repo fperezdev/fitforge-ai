@@ -155,7 +155,7 @@ export interface DatePickerProps {
   error?: string;
   placeholder?: string;
   disabled?: boolean;
-  /** Latest selectable date (defaults to today) */
+  /** Latest selectable date */
   toDate?: Date;
   /** Earliest selectable date */
   fromDate?: Date;
@@ -169,7 +169,7 @@ export function DatePicker({
   error,
   placeholder = "Pick a date",
   disabled,
-  toDate = new Date(),
+  toDate,
   fromDate,
   id,
 }: DatePickerProps) {

@@ -5,6 +5,7 @@ import { PlannerPage } from "./PlannerPage";
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
   PointerSensor,
   TouchSensor,
   useSensor,
@@ -39,6 +40,9 @@ import {
   Weight,
   Trash,
   GripVertical,
+  MoreHorizontal,
+  Copy,
+  BarChart2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -60,6 +64,7 @@ interface TemplateExercise {
     id: string;
     name: string;
     primaryMuscle: string;
+    secondaryMuscles: string[];
   };
 }
 
@@ -196,26 +201,21 @@ function ExercisePicker({
   onCancel: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const { data: results = [], isFetching } = useQuery<Exercise[]>({
-    queryKey: ["exercises-search", query],
-    queryFn: () => api.get(`/exercises${query ? `?search=${encodeURIComponent(query)}` : ""}`),
-    enabled: query.length >= 1 || query === "",
-    staleTime: 30_000,
+  const { data: allExercises = [], isLoading } = useQuery<Exercise[]>({
+    queryKey: ["exercises"],
+    queryFn: () => api.get("/exercises"),
+    staleTime: Infinity,
   });
 
-  const handleChange = (v: string) => {
-    setSearch(v);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setQuery(v), 300);
-  };
+  const results = search
+    ? allExercises.filter((ex) => ex.name.toLowerCase().includes(search.toLowerCase()))
+    : allExercises;
 
   return (
     <div className="rounded-lg border border-border bg-card shadow-lg w-full max-w-xs">
@@ -224,7 +224,7 @@ function ExercisePicker({
         <input
           ref={inputRef}
           value={search}
-          onChange={(e) => handleChange(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Search exercises…"
           className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
@@ -233,8 +233,8 @@ function ExercisePicker({
         </button>
       </div>
       <ul className="max-h-48 overflow-y-auto divide-y divide-border">
-        {isFetching && <li className="px-3 py-2 text-xs text-muted-foreground">Loading…</li>}
-        {!isFetching && results.length === 0 && (
+        {isLoading && <li className="px-3 py-2 text-xs text-muted-foreground">Loading…</li>}
+        {!isLoading && results.length === 0 && (
           <li className="px-3 py-2 text-xs text-muted-foreground">No results</li>
         )}
         {results.map((ex) => (
@@ -781,37 +781,205 @@ function formatSlotDate(iso: string): string {
   });
 }
 
+// ─── Week Volume ──────────────────────────────────────────────────────────────
+
+const MUSCLE_LABELS: Record<string, string> = {
+  chest: "Chest",
+  back: "Back",
+  lats: "Lats",
+  traps: "Traps",
+  anterior_deltoids: "Anterior Deltoids",
+  lateral_deltoids: "Lateral Deltoids",
+  posterior_deltoids: "Posterior Deltoids",
+  biceps: "Biceps",
+  triceps: "Triceps",
+  forearms: "Forearms",
+  core: "Core",
+  obliques: "Obliques",
+  glutes: "Glutes",
+  quadriceps: "Quadriceps",
+  hamstrings: "Hamstrings",
+  calves: "Calves",
+  soleus: "Soleus",
+  hip_flexors: "Hip Flexors",
+  adductors: "Adductors",
+  full_body: "Full Body",
+  other: "Other",
+};
+
+function computeWeekVolume(mc: PlanMicrocycle): Map<string, number> {
+  const volume = new Map<string, number>();
+  for (const day of mc.days) {
+    if (day.type !== "training" || !day.workoutTemplate) continue;
+    for (const te of day.workoutTemplate.templateExercises) {
+      const { primaryMuscle, secondaryMuscles } = te.exercise;
+      const sets = te.targetSets;
+      volume.set(primaryMuscle, (volume.get(primaryMuscle) ?? 0) + sets);
+      for (const m of secondaryMuscles) {
+        volume.set(m, (volume.get(m) ?? 0) + sets * 0.5);
+      }
+    }
+  }
+  return volume;
+}
+
+function computeWeekCardioKm(mc: PlanMicrocycle): number {
+  let total = 0;
+  for (const day of mc.days) {
+    if (day.type !== "training" || !day.cardioTemplate) continue;
+    for (const ex of day.cardioTemplate.cardioTemplateExercises) {
+      total += ex.kilometers ? parseFloat(ex.kilometers) : 0;
+    }
+  }
+  return total;
+}
+
+function WeekVolumeModal({
+  mc,
+  open,
+  onClose,
+}: {
+  mc: PlanMicrocycle;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const volume = computeWeekVolume(mc);
+  const rows = Array.from(volume.entries())
+    .filter(([, v]) => v > 0)
+    .sort(([, a], [, b]) => b - a);
+  const max = rows[0]?.[1] ?? 1;
+  const totalKm = computeWeekCardioKm(mc);
+
+  return (
+    <Modal open={open} onClose={onClose} title={`${mc.name ?? `Week ${mc.position}`} — Volume`}>
+      {rows.length === 0 && totalKm === 0 ? (
+        <p className="text-sm text-muted-foreground py-2">
+          No training days assigned for this week.
+        </p>
+      ) : (
+        <div className="space-y-4 py-1">
+          {rows.length > 0 && (
+            <div className="space-y-2.5">
+              {rows.map(([muscle, sets]) => (
+                <div key={muscle} className="flex items-center gap-3">
+                  <span className="w-40 shrink-0 text-sm text-foreground truncate">
+                    {MUSCLE_LABELS[muscle] ?? muscle}
+                  </span>
+                  <div className="flex-1 flex items-center gap-2">
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${(sets / max) * 100}%` }}
+                      />
+                    </div>
+                    <span className="w-14 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
+                      {Number.isInteger(sets) ? sets : sets.toFixed(1)} sets
+                    </span>
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground pt-2 border-t border-border">
+                Secondary muscles counted at 0.5× sets.
+              </p>
+            </div>
+          )}
+          {totalKm > 0 && (
+            <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+              <span className="text-sm text-foreground">Cardio distance</span>
+              <span className="text-sm tabular-nums font-medium">
+                {totalKm % 1 === 0 ? totalKm : totalKm.toFixed(1)} km
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ─── Week Context Menu ────────────────────────────────────────────────────────
+
+function WeekMenu({
+  onClone,
+  onDelete,
+  isPending,
+}: {
+  onClone: () => void;
+  onDelete?: () => void;
+  isPending?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={isPending}
+        aria-label="Week options"
+        className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+      >
+        <MoreHorizontal className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div className="absolute z-50 right-0 top-full mt-1 rounded-xl border border-border bg-card shadow-xl p-1 min-w-[150px]">
+            <button
+              onClick={() => {
+                onClone();
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted transition-colors"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Clone week
+            </button>
+            {onDelete && (
+              <button
+                onClick={() => {
+                  onDelete();
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete week
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Day Cell ─────────────────────────────────────────────────────────────────
 
 function DayCell({
   day,
   templates,
   cardioTemplates,
-  planId,
-  micId,
   isLocked,
   isDraggable = false,
   isReordering = false,
   scheduledDate,
   status,
   onNavigateToDay,
+  onCloneDay,
   isOverlay = false,
 }: {
   day: PlanDay;
   templates: Template[];
   cardioTemplates: CardioTemplate[];
-  planId: string;
-  micId: string;
   isLocked: boolean;
   isDraggable?: boolean;
   isReordering?: boolean;
   scheduledDate?: string | null;
   status?: { workout?: string; cardio?: string } | null;
   onNavigateToDay?: () => void;
+  onCloneDay?: () => void;
   isOverlay?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const queryClient = useQueryClient();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // A past day is any scheduled slot strictly before today (only relevant for active plans)
   const isPast = (() => {
@@ -842,30 +1010,11 @@ function DayCell({
     ? (cardioTemplates.find((t) => t.id === day.cardioTemplateId)?.name ?? "Cardio")
     : null;
 
-  const saveDayMutation = useMutation({
-    mutationFn: (type: DayType) =>
-      api.put(`/plans/${planId}/microcycles/${micId}/days/${day.dayNumber}`, {
-        type,
-        workoutTemplateId: type === "training" ? day.workoutTemplateId : null,
-        cardioTemplateId: type === "training" ? day.cardioTemplateId : null,
-        notes: day.notes,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["plan", planId] });
-      setOpen(false);
-    },
-  });
-
-  // Clicks on non-training days open the type toggle popover.
-  // Clicks on training days navigate into the day editor.
+  // All day types navigate into the day editor on click.
   // We let dnd-kit handle the pointer — it fires onClick only when no drag occurred.
   const handleClick = () => {
     if (isDragging || isReordering || isPast) return;
-    if (day.type === "training") {
-      onNavigateToDay?.();
-    } else if (!isLocked) {
-      setOpen((v) => !v);
-    }
+    onNavigateToDay?.();
   };
 
   return (
@@ -963,33 +1112,35 @@ function DayCell({
         )}
 
         {isLocked && <Check className="h-3 w-3 text-emerald-500 absolute top-1.5 right-1.5" />}
+        {!isLocked && !isReordering && !isOverlay && onCloneDay && day.type === "training" && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((v) => !v);
+            }}
+            aria-label="Day options"
+            className="absolute top-0.5 right-0.5 rounded p-0.5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors"
+          >
+            <MoreHorizontal className="h-3 w-3" />
+          </button>
+        )}
       </button>
 
-      {/* Rest-day quick toggle popover — not available for past days */}
-      {open && !isPast && (
+      {/* Day options menu */}
+      {menuOpen && !isReordering && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
-          <div className="absolute z-50 top-full mt-1 left-0 rounded-xl border border-border bg-card shadow-xl p-3 space-y-2 min-w-[160px]">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Day {day.dayNumber}
-            </p>
-            <div className="grid grid-cols-2 gap-1">
-              {(["training", "rest"] as DayType[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => saveDayMutation.mutate(t)}
-                  disabled={saveDayMutation.isPending}
-                  className={cn(
-                    "rounded-md px-2 py-1.5 text-xs font-medium border transition-colors",
-                    day.type === t
-                      ? DAY_TYPE_COLORS[t] + " ring-1 ring-inset ring-current"
-                      : "border-border text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  {DAY_TYPE_LABELS[t]}
-                </button>
-              ))}
-            </div>
+          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
+          <div className="absolute z-50 top-full mt-1 left-0 rounded-xl border border-border bg-card shadow-xl p-1 min-w-[140px]">
+            <button
+              onClick={() => {
+                onCloneDay?.();
+                setMenuOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted transition-colors"
+            >
+              <Copy className="h-3 w-3" />
+              Clone day
+            </button>
           </div>
         </>
       )}
@@ -999,22 +1150,35 @@ function DayCell({
 
 // ─── Delete Drop Zone ─────────────────────────────────────────────────────────
 
-function DeleteZone({ canDelete }: { canDelete: boolean }) {
-  const { isOver, setNodeRef } = useDroppable({ id: "delete-zone", disabled: !canDelete });
+function DeleteZone({
+  canDelete,
+  isDeleting = false,
+}: {
+  canDelete: boolean;
+  isDeleting?: boolean;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    id: "delete-zone",
+    disabled: !canDelete || isDeleting,
+  });
 
   return (
     <div
       ref={setNodeRef}
       className={cn(
-        "flex items-center justify-center gap-2 rounded-xl border-2 border-dashed py-3 transition-all duration-200",
-        isOver
-          ? "border-destructive bg-destructive/10 text-destructive scale-[1.02]"
-          : "border-destructive/40 text-destructive/60",
+        "flex min-h-20 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed transition-all duration-200",
+        isDeleting
+          ? "border-destructive bg-destructive/10 text-destructive opacity-60"
+          : isOver
+            ? "border-destructive bg-destructive/10 text-destructive scale-[1.02]"
+            : "border-destructive/40 text-destructive/60",
         !canDelete && "opacity-40",
       )}
     >
-      <Trash className="h-4 w-4" />
-      <span className="text-sm font-medium">Drop here to delete day</span>
+      <Trash className={cn("h-4 w-4 pointer-events-none", isDeleting && "animate-pulse")} />
+      <span className="text-sm font-medium pointer-events-none">
+        {isDeleting ? "Deleting…" : "Drop here to delete day"}
+      </span>
     </div>
   );
 }
@@ -1036,6 +1200,7 @@ function PlanView({
   const [editingMcId, setEditingMcId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [activeId, setActiveId] = useState<number | null>(null);
+  const [volumeModalMcId, setVolumeModalMcId] = useState<string | null>(null);
 
   // Local day order — only committed to the server on Save
   const canonicalOrder = Array.from({ length: plan.microcycleLength }, (_, i) => i + 1);
@@ -1092,6 +1257,17 @@ function PlanView({
     onError: () => {
       // Stay in reorder mode so the user can retry or cancel.
     },
+  });
+
+  const cloneWeekMutation = useMutation({
+    mutationFn: (mcId: string) => api.post(`/plans/${plan.id}/microcycles/${mcId}/clone`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
+  });
+
+  const cloneDayMutation = useMutation({
+    mutationFn: ({ mcId, dayNum }: { mcId: string; dayNum: number }) =>
+      api.post(`/plans/${plan.id}/microcycles/${mcId}/days/${dayNum}/clone`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
   });
 
   const canDeleteWeek = plan.microcycles.length > 1;
@@ -1164,7 +1340,13 @@ function PlanView({
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={(args) => {
+        // Prefer pointer-within for the delete zone so the full area is a valid drop target,
+        // then fall back to closestCenter for day reordering.
+        const pointerCollisions = pointerWithin(args);
+        if (pointerCollisions.length > 0) return pointerCollisions;
+        return closestCenter(args);
+      }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
@@ -1172,11 +1354,12 @@ function PlanView({
         {/* Reorder toolbar */}
         {!isLocked && (
           <div className="flex items-center gap-2">
-            {isReordering || reorderDaysMutation.isPending ? (
+            {isReordering || reorderDaysMutation.isPending || deleteDayMutation.isPending ? (
               <>
                 <Button
                   size="sm"
                   loading={reorderDaysMutation.isPending}
+                  disabled={deleteDayMutation.isPending}
                   onClick={handleSaveReorder}
                 >
                   <Save className="h-3.5 w-3.5 mr-1" />
@@ -1186,7 +1369,7 @@ function PlanView({
                   size="sm"
                   variant="outline"
                   onClick={handleCancelReorder}
-                  disabled={reorderDaysMutation.isPending}
+                  disabled={reorderDaysMutation.isPending || deleteDayMutation.isPending}
                 >
                   <X className="h-3.5 w-3.5 mr-1" />
                   Cancel
@@ -1283,15 +1466,21 @@ function PlanView({
                     <span className="text-xs text-muted-foreground">
                       {assignedCount}/{totalDays} days set
                     </span>
-                    {!isLocked && canDeleteWeek && (
-                      <button
-                        onClick={() => deleteWeekMutation.mutate(mc.id)}
-                        disabled={deleteWeekMutation.isPending}
-                        aria-label={`Delete ${mc.name ?? `Week ${mc.position}`}`}
-                        className="rounded-md p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                    <button
+                      onClick={() => setVolumeModalMcId(mc.id)}
+                      aria-label="View week volume"
+                      className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      <BarChart2 className="h-3.5 w-3.5" />
+                    </button>
+                    {!isLocked && (
+                      <WeekMenu
+                        onClone={() => cloneWeekMutation.mutate(mc.id)}
+                        onDelete={
+                          canDeleteWeek ? () => deleteWeekMutation.mutate(mc.id) : undefined
+                        }
+                        isPending={cloneWeekMutation.isPending || deleteWeekMutation.isPending}
+                      />
                     )}
                   </div>
                 </div>
@@ -1316,11 +1505,12 @@ function PlanView({
                             day={day}
                             templates={templates}
                             cardioTemplates={cardioTemplates}
-                            planId={plan.id}
-                            micId={mc.id}
                             isLocked={isLocked}
                             isDraggable={
-                              isReordering && !isLocked && !reorderDaysMutation.isPending
+                              isReordering &&
+                              !isLocked &&
+                              !reorderDaysMutation.isPending &&
+                              !deleteDayMutation.isPending
                             }
                             isReordering={isReordering}
                             scheduledDate={
@@ -1334,6 +1524,11 @@ function PlanView({
                                 : null
                             }
                             onNavigateToDay={() => onNavigateToDay(mc.position, d)}
+                            onCloneDay={
+                              !isLocked
+                                ? () => cloneDayMutation.mutate({ mcId: mc.id, dayNum: d })
+                                : undefined
+                            }
                           />
                         </div>
                       );
@@ -1345,8 +1540,18 @@ function PlanView({
           })}
         </SortableContext>
 
-        {/* Delete drop zone — only visible while reordering and dragging */}
-        {isReordering && activeId != null && <DeleteZone canDelete={canDeleteDay} />}
+        {volumeModalMcId && (
+          <WeekVolumeModal
+            mc={plan.microcycles.find((m) => m.id === volumeModalMcId)!}
+            open={true}
+            onClose={() => setVolumeModalMcId(null)}
+          />
+        )}
+
+        {/* Delete drop zone — only visible while reordering and dragging or deletion in flight */}
+        {isReordering && (activeId != null || deleteDayMutation.isPending) && (
+          <DeleteZone canDelete={canDeleteDay} isDeleting={deleteDayMutation.isPending} />
+        )}
 
         {!isLocked && (
           <div className="flex flex-wrap gap-2 pt-1">
@@ -1380,8 +1585,6 @@ function PlanView({
               day={activeDayStub}
               templates={templates}
               cardioTemplates={cardioTemplates}
-              planId={plan.id}
-              micId={activeDayStub.planMicrocycleId}
               isLocked={false}
               isDraggable={false}
               isOverlay
@@ -1563,6 +1766,12 @@ function DayView({
   const [cardioRows, setCardioRows] = useState<CardioRow[]>(
     cardioTemplate ? cardioTemplateToRows(cardioTemplate) : [],
   );
+  const [strengthName, setStrengthName] = useState(
+    strengthTemplate?.name ?? `W${selectedWeek} D${selectedDay} Strength`,
+  );
+  const [cardioName, setCardioName] = useState(
+    cardioTemplate?.name ?? `W${selectedWeek} D${selectedDay} Cardio`,
+  );
   const [isDirty, setIsDirty] = useState(false);
 
   // Re-init when the selected day changes
@@ -1571,6 +1780,8 @@ function DayView({
     setDayType(dayData.type);
     setStrengthRows(strengthTemplate ? templateToStrengthRows(strengthTemplate) : []);
     setCardioRows(cardioTemplate ? cardioTemplateToRows(cardioTemplate) : []);
+    setStrengthName(strengthTemplate?.name ?? `W${selectedWeek} D${selectedDay} Strength`);
+    setCardioName(cardioTemplate?.name ?? `W${selectedWeek} D${selectedDay} Cardio`);
     setIsDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWeek, selectedDay, plan]);
@@ -1605,7 +1816,7 @@ function DayView({
 
       if (strengthRows.length > 0) {
         const strengthPayload = {
-          name: strengthTemplate?.name ?? `W${selectedWeek} D${selectedDay} Strength`,
+          name: strengthName.trim() || `W${selectedWeek} D${selectedDay} Strength`,
           description: null,
           exercises: strengthRows.map((r, i) => ({
             exerciseId: r.exerciseId,
@@ -1644,7 +1855,7 @@ function DayView({
 
       if (cardioRows.length > 0) {
         const cardioPayload = {
-          name: cardioTemplate?.name ?? `W${selectedWeek} D${selectedDay} Cardio`,
+          name: cardioName.trim() || `W${selectedWeek} D${selectedDay} Cardio`,
           description: null,
           exercises: cardioRows.map((r, i) => ({
             name: r.name || "Cardio",
@@ -1841,8 +2052,21 @@ function DayView({
                 <span className="text-xs font-semibold text-primary uppercase tracking-wide">
                   Strength
                 </span>
-                {strengthTemplate?.name && (
-                  <span className="text-xs text-muted-foreground">— {strengthTemplate.name}</span>
+                {isEditing ? (
+                  <input
+                    value={strengthName}
+                    onChange={(e) => {
+                      setStrengthName(e.target.value);
+                      markDirty();
+                    }}
+                    disabled={saveMutation.isPending}
+                    placeholder="Workout name"
+                    className="ml-1 h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                  />
+                ) : (
+                  strengthName && (
+                    <span className="text-xs text-muted-foreground">— {strengthName}</span>
+                  )
                 )}
               </div>
               {!isEditing ? (
@@ -1867,8 +2091,21 @@ function DayView({
                 <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
                   Cardio
                 </span>
-                {cardioTemplate?.name && (
-                  <span className="text-xs text-muted-foreground">— {cardioTemplate.name}</span>
+                {isEditing ? (
+                  <input
+                    value={cardioName}
+                    onChange={(e) => {
+                      setCardioName(e.target.value);
+                      markDirty();
+                    }}
+                    disabled={saveMutation.isPending}
+                    placeholder="Cardio name"
+                    className="ml-1 h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                  />
+                ) : (
+                  cardioName && (
+                    <span className="text-xs text-muted-foreground">— {cardioName}</span>
+                  )
                 )}
               </div>
               {!isEditing ? (
@@ -2231,6 +2468,8 @@ export function PlanEditorPage() {
   const [dayViewWeek, setDayViewWeek] = useState<number | undefined>();
   const [dayViewDay, setDayViewDay] = useState<number | undefined>();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [editingPlanName, setEditingPlanName] = useState(false);
+  const [planNameDraft, setPlanNameDraft] = useState("");
 
   // Fetch the user's single plan by list endpoint (no id in URL)
   const { data: planMeta, isLoading: isMetaLoading } = useQuery<{ id: string } | null>({
@@ -2264,6 +2503,14 @@ export function PlanEditorPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plans"] });
       navigate("/planner", { replace: true });
+    },
+  });
+
+  const renamePlanMutation = useMutation({
+    mutationFn: (name: string) => api.put(`/plans/${id}`, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", id] });
+      setEditingPlanName(false);
     },
   });
 
@@ -2319,7 +2566,43 @@ export function PlanEditorPage() {
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold truncate">{plan.name}</h1>
+              {editingPlanName ? (
+                <input
+                  autoFocus
+                  value={planNameDraft}
+                  onChange={(e) => setPlanNameDraft(e.target.value)}
+                  onBlur={() => {
+                    if (planNameDraft.trim() && planNameDraft !== plan.name) {
+                      renamePlanMutation.mutate(planNameDraft.trim());
+                    } else {
+                      setEditingPlanName(false);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (planNameDraft.trim() && planNameDraft !== plan.name) {
+                        renamePlanMutation.mutate(planNameDraft.trim());
+                      } else {
+                        setEditingPlanName(false);
+                      }
+                    }
+                    if (e.key === "Escape") setEditingPlanName(false);
+                  }}
+                  className="h-8 rounded-md border border-border bg-background px-2 text-xl font-bold focus:outline-none focus:ring-2 focus:ring-ring min-w-0 flex-1"
+                />
+              ) : (
+                <button
+                  className="text-xl font-bold truncate hover:text-primary transition-colors text-left"
+                  onClick={() => {
+                    if (plan.status === "completed") return;
+                    setPlanNameDraft(plan.name);
+                    setEditingPlanName(true);
+                  }}
+                  title={plan.status !== "completed" ? "Click to rename" : undefined}
+                >
+                  {plan.name}
+                </button>
+              )}
               <span
                 className={cn(
                   "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border shrink-0",

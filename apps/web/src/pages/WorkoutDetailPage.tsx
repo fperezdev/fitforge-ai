@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn, formatDuration } from "@/lib/utils";
+import { muscleLabel } from "@/lib/muscleLabels";
 
 interface SessionDetail {
   id: string;
@@ -245,8 +246,8 @@ export function WorkoutDetailPage() {
                           )}
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground capitalize mt-0.5">
-                        {entry.exercise.primaryMuscle.replace(/_/g, " ")}
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {muscleLabel(entry.exercise.primaryMuscle)}
                       </p>
                     </CardHeader>
                   </button>

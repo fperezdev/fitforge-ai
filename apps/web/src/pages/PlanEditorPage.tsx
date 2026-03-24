@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlannerPage } from "./PlannerPage";
@@ -10,7 +11,6 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
-  useDroppable,
   DragOverlay,
   type DragStartEvent,
   type DragEndEvent,
@@ -38,7 +38,6 @@ import {
   TrendingUp,
   Flame,
   Weight,
-  Trash,
   GripVertical,
   MoreHorizontal,
   Copy,
@@ -49,6 +48,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
+import { MUSCLE_LABELS, muscleLabel } from "@/lib/muscleLabels";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -214,7 +214,14 @@ function ExercisePicker({
   });
 
   const results = search
-    ? allExercises.filter((ex) => ex.name.toLowerCase().includes(search.toLowerCase()))
+    ? allExercises.filter((ex) => {
+        const q = search.toLowerCase();
+        return (
+          ex.name.toLowerCase().includes(q) ||
+          ex.primaryMuscle.toLowerCase().includes(q) ||
+          (MUSCLE_LABELS[ex.primaryMuscle] ?? "").toLowerCase().includes(q)
+        );
+      })
     : allExercises;
 
   return (
@@ -244,7 +251,7 @@ function ExercisePicker({
               className="w-full text-left px-3 py-2 hover:bg-muted transition-colors"
             >
               <p className="text-sm font-medium">{ex.name}</p>
-              <p className="text-[11px] text-muted-foreground">{ex.primaryMuscle}</p>
+              <p className="text-[11px] text-muted-foreground">{muscleLabel(ex.primaryMuscle)}</p>
             </button>
           </li>
         ))}
@@ -307,7 +314,7 @@ function SortableStrengthRow({
       <div className="min-w-0 pr-2">
         <p className="text-sm font-semibold truncate leading-tight mb-0.5">{row.exerciseName}</p>
         <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">
-          {row.exerciseMuscle}
+          {muscleLabel(row.exerciseMuscle)}
         </p>
       </div>
 
@@ -493,7 +500,7 @@ function StrengthEditor({
                   {activeRow.exerciseName}
                 </p>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">
-                  {activeRow.exerciseMuscle}
+                  {muscleLabel(activeRow.exerciseMuscle)}
                 </p>
               </div>
               <div />
@@ -783,30 +790,6 @@ function formatSlotDate(iso: string): string {
 
 // ─── Week Volume ──────────────────────────────────────────────────────────────
 
-const MUSCLE_LABELS: Record<string, string> = {
-  chest: "Chest",
-  back: "Back",
-  lats: "Lats",
-  traps: "Traps",
-  anterior_deltoids: "Anterior Deltoids",
-  lateral_deltoids: "Lateral Deltoids",
-  posterior_deltoids: "Posterior Deltoids",
-  biceps: "Biceps",
-  triceps: "Triceps",
-  forearms: "Forearms",
-  core: "Core",
-  obliques: "Obliques",
-  glutes: "Glutes",
-  quadriceps: "Quadriceps",
-  hamstrings: "Hamstrings",
-  calves: "Calves",
-  soleus: "Soleus",
-  hip_flexors: "Hip Flexors",
-  adductors: "Adductors",
-  full_body: "Full Body",
-  other: "Other",
-};
-
 function computeWeekVolume(mc: PlanMicrocycle): Map<string, number> {
   const volume = new Map<string, number>();
   for (const day of mc.days) {
@@ -863,7 +846,7 @@ function WeekVolumeModal({
               {rows.map(([muscle, sets]) => (
                 <div key={muscle} className="flex items-center gap-3">
                   <span className="w-40 shrink-0 text-sm text-foreground truncate">
-                    {MUSCLE_LABELS[muscle] ?? muscle}
+                    {muscleLabel(muscle)}
                   </span>
                   <div className="flex-1 flex items-center gap-2">
                     <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
@@ -965,6 +948,7 @@ function DayCell({
   status,
   onNavigateToDay,
   onCloneDay,
+  onDeleteDay,
   isOverlay = false,
 }: {
   day: PlanDay;
@@ -977,9 +961,12 @@ function DayCell({
   status?: { workout?: string; cardio?: string } | null;
   onNavigateToDay?: () => void;
   onCloneDay?: () => void;
+  onDeleteDay?: () => void;
   isOverlay?: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const dotsRef = useRef<HTMLButtonElement>(null);
 
   // A past day is any scheduled slot strictly before today (only relevant for active plans)
   const isPast = (() => {
@@ -1004,10 +991,14 @@ function DayCell({
   const hasAny = hasStrength || hasCardio;
 
   const strengthName = hasStrength
-    ? (templates.find((t) => t.id === day.workoutTemplateId)?.name ?? "Strength")
+    ? (day.workoutTemplate?.name ??
+      templates.find((t) => t.id === day.workoutTemplateId)?.name ??
+      "Strength")
     : null;
   const cardioName = hasCardio
-    ? (cardioTemplates.find((t) => t.id === day.cardioTemplateId)?.name ?? "Cardio")
+    ? (day.cardioTemplate?.name ??
+      cardioTemplates.find((t) => t.id === day.cardioTemplateId)?.name ??
+      "Cardio")
     : null;
 
   // All day types navigate into the day editor on click.
@@ -1112,73 +1103,72 @@ function DayCell({
         )}
 
         {isLocked && <Check className="h-3 w-3 text-emerald-500 absolute top-1.5 right-1.5" />}
-        {!isLocked && !isReordering && !isOverlay && onCloneDay && day.type === "training" && (
+      </button>
+
+      {!isLocked &&
+        !isReordering &&
+        !isOverlay &&
+        (onCloneDay || onDeleteDay) &&
+        day.type === "training" && (
           <button
+            ref={dotsRef}
             onClick={(e) => {
               e.stopPropagation();
+              const rect = dotsRef.current?.getBoundingClientRect();
+              if (rect) {
+                setMenuPos({
+                  top: rect.bottom + window.scrollY + 4,
+                  left: rect.left + window.scrollX,
+                });
+              }
               setMenuOpen((v) => !v);
             }}
             aria-label="Day options"
-            className="absolute top-0.5 right-0.5 rounded p-0.5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors"
+            className="absolute top-0.5 right-0.5 rounded p-0.5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors z-10"
           >
             <MoreHorizontal className="h-3 w-3" />
           </button>
         )}
-      </button>
 
-      {/* Day options menu */}
-      {menuOpen && !isReordering && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-          <div className="absolute z-50 top-full mt-1 left-0 rounded-xl border border-border bg-card shadow-xl p-1 min-w-[140px]">
-            <button
-              onClick={() => {
-                onCloneDay?.();
-                setMenuOpen(false);
-              }}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted transition-colors"
+      {/* Day options menu — rendered in a portal to escape overflow:hidden containers */}
+      {menuOpen &&
+        !isReordering &&
+        menuPos &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
+            <div
+              className="absolute z-50 rounded-xl border border-border bg-card shadow-xl p-1 min-w-[140px]"
+              style={{ top: menuPos.top, left: menuPos.left }}
             >
-              <Copy className="h-3 w-3" />
-              Clone day
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ─── Delete Drop Zone ─────────────────────────────────────────────────────────
-
-function DeleteZone({
-  canDelete,
-  isDeleting = false,
-}: {
-  canDelete: boolean;
-  isDeleting?: boolean;
-}) {
-  const { isOver, setNodeRef } = useDroppable({
-    id: "delete-zone",
-    disabled: !canDelete || isDeleting,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={cn(
-        "flex min-h-20 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed transition-all duration-200",
-        isDeleting
-          ? "border-destructive bg-destructive/10 text-destructive opacity-60"
-          : isOver
-            ? "border-destructive bg-destructive/10 text-destructive scale-[1.02]"
-            : "border-destructive/40 text-destructive/60",
-        !canDelete && "opacity-40",
-      )}
-    >
-      <Trash className={cn("h-4 w-4 pointer-events-none", isDeleting && "animate-pulse")} />
-      <span className="text-sm font-medium pointer-events-none">
-        {isDeleting ? "Deleting…" : "Drop here to delete day"}
-      </span>
+              {onCloneDay && (
+                <button
+                  onClick={() => {
+                    onCloneDay();
+                    setMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted transition-colors"
+                >
+                  <Copy className="h-3 w-3" />
+                  Clone day
+                </button>
+              )}
+              {onDeleteDay && (
+                <button
+                  onClick={() => {
+                    onDeleteDay();
+                    setMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted text-destructive transition-colors"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Delete day
+                </button>
+              )}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -1221,30 +1211,40 @@ function PlanView({
       api.patch(`/plans/${plan.id}/microcycles/${mcId}`, { name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
       setEditingMcId(null);
     },
   });
 
   const addWeekMutation = useMutation({
     mutationFn: () => api.post(`/plans/${plan.id}/microcycles`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+    },
   });
 
   const addDayMutation = useMutation({
     mutationFn: () => api.post(`/plans/${plan.id}/days/extend`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+    },
   });
 
   const deleteWeekMutation = useMutation({
     mutationFn: (mcId: string) => api.delete(`/plans/${plan.id}/microcycles/${mcId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+    },
   });
 
   const deleteDayMutation = useMutation({
     mutationFn: (dayNumber: number) => api.delete(`/plans/${plan.id}/days/${dayNumber}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
-      setIsReordering(false);
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
     },
   });
 
@@ -1252,6 +1252,7 @@ function PlanView({
     mutationFn: (order: number[]) => api.patch(`/plans/${plan.id}/days/reorder`, { order }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
       setIsReordering(false);
     },
     onError: () => {
@@ -1261,17 +1262,26 @@ function PlanView({
 
   const cloneWeekMutation = useMutation({
     mutationFn: (mcId: string) => api.post(`/plans/${plan.id}/microcycles/${mcId}/clone`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
+    },
   });
 
   const cloneDayMutation = useMutation({
     mutationFn: ({ mcId, dayNum }: { mcId: string; dayNum: number }) =>
       api.post(`/plans/${plan.id}/microcycles/${mcId}/days/${dayNum}/clone`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["plan", plan.id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
+    },
   });
 
   const canDeleteWeek = plan.microcycles.length > 1;
-  const canDeleteDay = localDayOrder.length > 1;
   const dayOrder = isReordering ? localDayOrder : canonicalOrder;
 
   const handleCancelReorder = () => {
@@ -1317,11 +1327,6 @@ function PlanView({
     const { active, over } = event;
     if (!over) return;
 
-    if (over.id === "delete-zone" && canDeleteDay) {
-      deleteDayMutation.mutate(active.id as number);
-      return;
-    }
-
     if (active.id !== over.id) {
       // Prevent dropping onto a past day column
       const today = new Date();
@@ -1341,8 +1346,7 @@ function PlanView({
     <DndContext
       sensors={sensors}
       collisionDetection={(args) => {
-        // Prefer pointer-within for the delete zone so the full area is a valid drop target,
-        // then fall back to closestCenter for day reordering.
+        // Use pointer-within first for precise hit detection, then fall back to closestCenter.
         const pointerCollisions = pointerWithin(args);
         if (pointerCollisions.length > 0) return pointerCollisions;
         return closestCenter(args);
@@ -1354,12 +1358,11 @@ function PlanView({
         {/* Reorder toolbar */}
         {!isLocked && (
           <div className="flex items-center gap-2">
-            {isReordering || reorderDaysMutation.isPending || deleteDayMutation.isPending ? (
+            {isReordering || reorderDaysMutation.isPending ? (
               <>
                 <Button
                   size="sm"
                   loading={reorderDaysMutation.isPending}
-                  disabled={deleteDayMutation.isPending}
                   onClick={handleSaveReorder}
                 >
                   <Save className="h-3.5 w-3.5 mr-1" />
@@ -1369,7 +1372,7 @@ function PlanView({
                   size="sm"
                   variant="outline"
                   onClick={handleCancelReorder}
-                  disabled={reorderDaysMutation.isPending || deleteDayMutation.isPending}
+                  disabled={reorderDaysMutation.isPending}
                 >
                   <X className="h-3.5 w-3.5 mr-1" />
                   Cancel
@@ -1507,10 +1510,7 @@ function PlanView({
                             cardioTemplates={cardioTemplates}
                             isLocked={isLocked}
                             isDraggable={
-                              isReordering &&
-                              !isLocked &&
-                              !reorderDaysMutation.isPending &&
-                              !deleteDayMutation.isPending
+                              isReordering && !isLocked && !reorderDaysMutation.isPending
                             }
                             isReordering={isReordering}
                             scheduledDate={
@@ -1527,6 +1527,11 @@ function PlanView({
                             onCloneDay={
                               !isLocked
                                 ? () => cloneDayMutation.mutate({ mcId: mc.id, dayNum: d })
+                                : undefined
+                            }
+                            onDeleteDay={
+                              !isLocked && localDayOrder.length > 1
+                                ? () => deleteDayMutation.mutate(d)
                                 : undefined
                             }
                           />
@@ -1548,10 +1553,7 @@ function PlanView({
           />
         )}
 
-        {/* Delete drop zone — only visible while reordering and dragging or deletion in flight */}
-        {isReordering && (activeId != null || deleteDayMutation.isPending) && (
-          <DeleteZone canDelete={canDeleteDay} isDeleting={deleteDayMutation.isPending} />
-        )}
+        {/* (delete drop zone removed — deletion is now via the day options menu) */}
 
         {!isLocked && (
           <div className="flex flex-wrap gap-2 pt-1">
@@ -1622,7 +1624,7 @@ function StrengthReadView({ rows }: { rows: StrengthRow[] }) {
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{r.exerciseName}</p>
               <p className="text-[11px] text-muted-foreground uppercase tracking-wider truncate">
-                {r.exerciseMuscle}
+                {muscleLabel(r.exerciseMuscle)}
               </p>
             </div>
           </div>
@@ -1737,13 +1739,20 @@ function DayView({
     notes: null,
   };
 
-  const strengthTemplate = dayData.workoutTemplateId
-    ? (templates.find((t) => t.id === dayData.workoutTemplateId) ?? null)
-    : null;
+  // Use the template embedded in the plan day (returned by GET /plans/:id).
+  // Falling back to the templates list avoids a stale-cache race where the
+  // ["templates"] query hasn't refreshed yet after a save.
+  const strengthTemplate: Template | null =
+    dayData.workoutTemplate ??
+    (dayData.workoutTemplateId
+      ? (templates.find((t) => t.id === dayData.workoutTemplateId) ?? null)
+      : null);
 
-  const cardioTemplate = dayData.cardioTemplateId
-    ? (cardioTemplates.find((t) => t.id === dayData.cardioTemplateId) ?? null)
-    : null;
+  const cardioTemplate: CardioTemplate | null =
+    dayData.cardioTemplate ??
+    (dayData.cardioTemplateId
+      ? (cardioTemplates.find((t) => t.id === dayData.cardioTemplateId) ?? null)
+      : null);
 
   const isLocked = plan.status === "completed";
 
@@ -1900,6 +1909,7 @@ function DayView({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
       queryClient.invalidateQueries({ queryKey: ["templates"] });
       queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
       setIsDirty(false);
@@ -1908,6 +1918,7 @@ function DayView({
     onError: () => {
       // Refresh to sync any partial state that was committed before the failure
       queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
       queryClient.invalidateQueries({ queryKey: ["templates"] });
       queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
     },

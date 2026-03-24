@@ -237,14 +237,20 @@ const EXERCISES: ExerciseSeed[] = [
   {
     name: "Face Pull",
     primaryMuscle: "posterior_deltoids",
-    secondaryMuscles: ["traps", "back"],
+    secondaryMuscles: [],
     requiredEquipment: ["cables"],
   },
   {
     name: "Reverse Pec Deck",
     primaryMuscle: "posterior_deltoids",
-    secondaryMuscles: ["back"],
+    secondaryMuscles: [],
     requiredEquipment: ["pec_deck_machine"],
+  },
+  {
+    name: "Rear Delt Raise (Dumbbell)",
+    primaryMuscle: "posterior_deltoids",
+    secondaryMuscles: [],
+    requiredEquipment: ["dumbbells"],
   },
 
   // ── Arms ─────────────────────────────────────────────────────────────────

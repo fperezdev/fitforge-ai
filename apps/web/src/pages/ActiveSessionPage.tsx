@@ -203,6 +203,7 @@ export function ActiveSessionPage() {
     mutationFn: () => api.patch(`/sessions/${id}`, { status: "completed" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
       navigate("/workout");
     },
   });

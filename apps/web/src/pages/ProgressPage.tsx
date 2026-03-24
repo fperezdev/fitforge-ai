@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { Dumbbell, TrendingUp, Ruler } from "lucide-react";
 import { api } from "@/lib/api";
+import { muscleLabel } from "@/lib/muscleLabels";
 import type { WeightEntry } from "@fitforge/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -184,7 +185,9 @@ export function ProgressPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="success">{Number(pr.value).toFixed(1)} kg</Badge>
-                      <Badge variant="secondary">{pr.exercise.primaryMuscle ?? "—"}</Badge>
+                      <Badge variant="secondary">
+                        {pr.exercise.primaryMuscle ? muscleLabel(pr.exercise.primaryMuscle) : "—"}
+                      </Badge>
                     </div>
                   </div>
                 ))}

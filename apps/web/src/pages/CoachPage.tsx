@@ -33,6 +33,7 @@ interface Conversation {
   title: string | null;
   mode: "advice" | "plan" | null;
   status: "active" | "closed";
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -1289,7 +1290,10 @@ export function CoachPage() {
                   activeConv === conv.id ? "text-primary-foreground/70" : "text-muted-foreground",
                 )}
               >
-                {new Date(conv.updatedAt).toLocaleDateString()}
+                {new Date(conv.createdAt).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
               </p>
             </button>
           ))}
@@ -1331,9 +1335,9 @@ export function CoachPage() {
                     <div className="flex gap-3 mt-2">
                       <div className="h-7 w-7 shrink-0" aria-hidden />
                       <div className="max-w-[80%] rounded-xl bg-primary/5 border border-primary/15 px-4 py-2.5 text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">Plan exported as draft.</span>{" "}
-                        Head to the Planner to review and edit it, then come back here and keep
-                        chatting — your edits will be included automatically as context.
+                        <span className="font-medium text-foreground">There is a draft plan.</span>{" "}
+                        It will be included automatically as context — you can edit or delete it and
+                        keep chatting.
                       </div>
                     </div>
                   )}

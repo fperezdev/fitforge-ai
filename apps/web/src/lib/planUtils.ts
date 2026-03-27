@@ -31,6 +31,8 @@ export interface NextDay {
   template: { id: string; name: string };
 }
 
+const msPerDay = 86_400_000;
+
 function isDayFullyResolved(statuses: string[], hasWorkout: boolean, hasCardio: boolean): boolean {
   if (statuses.includes("skipped") || statuses.includes("completed")) return true;
   const workoutDone =
@@ -56,7 +58,6 @@ export function findNextDay(plan: ActivePlan, component: "workout" | "cardio"): 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const msPerDay = 86_400_000;
   const daysSince = Math.floor((today.getTime() - anchor.getTime()) / msPerDay);
   const totalDays = plan.microcycleLength * plan.mesocycleLength;
 
@@ -102,9 +103,7 @@ export function findNextDay(plan: ActivePlan, component: "workout" | "cardio"): 
   return null;
 }
 
-const msPerDay = 86_400_000;
-
-export function getDateLabel(date: Date): { label: string; isToday: boolean } {
+export function getDateLabel(date: Date): { label: string; isToday: boolean; isPast: boolean } {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const d = new Date(date);
@@ -115,7 +114,73 @@ export function getDateLabel(date: Date): { label: string; isToday: boolean } {
     month: "short",
     day: "numeric",
   });
-  if (diffDays === 0) return { label: `Today · ${formatted}`, isToday: true };
-  if (diffDays === 1) return { label: `Tomorrow · ${formatted}`, isToday: false };
-  return { label: formatted, isToday: false };
+  if (diffDays === 0) return { label: `Today · ${formatted}`, isToday: true, isPast: false };
+  if (diffDays === 1) return { label: `Tomorrow · ${formatted}`, isToday: false, isPast: false };
+  if (diffDays < 0) return { label: formatted, isToday: false, isPast: true };
+  return { label: formatted, isToday: false, isPast: false };
+}
+
+/**
+ * Return all unresolved training day slots for the given component that fall
+ * within the CURRENT microcycle week but strictly before today.
+ * Past weeks are auto-skipped by the backend, so only the current week matters.
+ * Results are sorted oldest-first.
+ */
+export function getPastPendingDays(plan: ActivePlan, component: "workout" | "cardio"): NextDay[] {
+  if (!plan.activatedAt && !plan.startDate) return [];
+
+  const anchor = plan.startDate
+    ? new Date(plan.startDate + "T00:00:00")
+    : new Date(plan.activatedAt!);
+  anchor.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const daysSince = Math.floor((today.getTime() - anchor.getTime()) / msPerDay);
+  const currentWeekIndex = Math.floor(daysSince / plan.microcycleLength) % plan.mesocycleLength;
+  const currentDayIndex = daysSince % plan.microcycleLength;
+  // Absolute week number (not wrapped by mesocycle) for correct date computation
+  const currentAbsoluteWeek = Math.floor(daysSince / plan.microcycleLength);
+
+  const results: NextDay[] = [];
+
+  for (let di = 0; di < currentDayIndex; di++) {
+    const key = `${currentWeekIndex}:${di}`;
+    const statuses = plan.dayLogs[key] ?? [];
+
+    const week = plan.microcycles.find((mc) => mc.position === currentWeekIndex + 1);
+    const day = week?.days.find((d) => d.dayNumber === di + 1);
+    if (!day || day.type !== "training") continue;
+
+    // Skip if this component isn't on this day
+    if (component === "workout" && !day.workoutTemplate) continue;
+    if (component === "cardio" && !day.cardioTemplate) continue;
+
+    // Skip if already resolved
+    if (
+      statuses.includes("skipped") ||
+      statuses.includes("completed") ||
+      (component === "workout" &&
+        (statuses.includes("workout_completed") || statuses.includes("workout_skipped"))) ||
+      (component === "cardio" &&
+        (statuses.includes("cardio_completed") || statuses.includes("cardio_skipped")))
+    ) {
+      continue;
+    }
+
+    const pos = currentAbsoluteWeek * plan.microcycleLength + di;
+    const slotDate = new Date(anchor);
+    slotDate.setDate(slotDate.getDate() + pos);
+
+    results.push({
+      planDayId: day.id,
+      weekIndex: currentWeekIndex,
+      dayIndex: di,
+      date: slotDate,
+      template: component === "cardio" ? day.cardioTemplate! : day.workoutTemplate!,
+    });
+  }
+
+  return results;
 }

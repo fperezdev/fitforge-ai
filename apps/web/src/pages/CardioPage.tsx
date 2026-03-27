@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Activity, SkipForward, CheckCircle2, ChevronRight } from "lucide-react";
+import { Activity, SkipForward, CheckCircle2, ChevronRight, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import type { CardioSession } from "@fitforge/types";
@@ -16,7 +16,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SkipDayModal } from "@/components/ui/skip-day-modal";
 import { useSkipDay } from "@/hooks/useSkipDay";
 import { formatDistance, formatDuration, formatPace } from "@/lib/utils";
-import { type ActivePlan, findNextDay, getDateLabel } from "@/lib/planUtils";
+import {
+  type ActivePlan,
+  type NextDay,
+  findNextDay,
+  getPastPendingDays,
+  getDateLabel,
+} from "@/lib/planUtils";
 
 const nanToUndef = (v: unknown) => (typeof v === "number" && isNaN(v) ? undefined : v);
 
@@ -68,6 +74,9 @@ export function CardioPage() {
   const [planWeekIndex, setPlanWeekIndex] = useState<number | null>(null);
   const [planDayIndex, setPlanDayIndex] = useState<number | null>(null);
 
+  // Track which day the skip modal is targeting (next-day card or a past-pending card)
+  const [skipTarget, setSkipTarget] = useState<NextDay | null>(null);
+
   const { data: sessions = [], isLoading: sessionsLoading } = useQuery<CardioSession[]>({
     queryKey: ["cardio"],
     queryFn: () => api.get("/cardio?limit=30"),
@@ -109,16 +118,34 @@ export function CardioPage() {
 
   const isLoading = sessionsLoading || planLoading;
   const nextCardio = activePlan ? findNextDay(activePlan, "cardio") : null;
-  const { label: dateLabel, isToday } = nextCardio
-    ? getDateLabel(nextCardio.date)
-    : { label: "", isToday: false };
+  const pastPending = activePlan ? getPastPendingDays(activePlan, "cardio") : [];
 
-  function openFromSuggestion() {
-    if (!nextCardio) return;
-    setPlanDayId(nextCardio.planDayId);
-    setPlanWeekIndex(nextCardio.weekIndex);
-    setPlanDayIndex(nextCardio.dayIndex);
+  const {
+    label: dateLabel,
+    isToday,
+    isPast,
+  } = nextCardio ? getDateLabel(nextCardio.date) : { label: "", isToday: false, isPast: false };
+
+  const canActOnNext = isToday || isPast;
+
+  // The active target for the skip modal
+  const activeSkipTarget = skipTarget ?? nextCardio;
+
+  function openFromSuggestion(day: NextDay) {
+    setPlanDayId(day.planDayId);
+    setPlanWeekIndex(day.weekIndex);
+    setPlanDayIndex(day.dayIndex);
     setModalOpen(true);
+  }
+
+  function openSkipForDay(day: NextDay) {
+    setSkipTarget(day);
+    skipDay.openConfirm();
+  }
+
+  function closeSkipModal() {
+    skipDay.closeConfirm();
+    setSkipTarget(null);
   }
 
   function closeModal() {
@@ -231,7 +258,8 @@ export function CardioPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                        {isToday ? "Today's plan" : "Upcoming"} · {activePlan.name}
+                        {isToday ? "Today's plan" : isPast ? "Pending" : "Upcoming"} ·{" "}
+                        {activePlan.name}
                       </p>
                       <p className="font-medium truncate">{nextCardio.template.name}</p>
                       <p className="text-xs text-muted-foreground">
@@ -244,14 +272,18 @@ export function CardioPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={skipDay.openConfirm}
-                      disabled={!isToday}
-                      aria-label="Skip today's cardio"
+                      onClick={() => openSkipForDay(nextCardio)}
+                      disabled={!canActOnNext}
+                      aria-label="Skip this cardio"
                     >
                       <SkipForward className="h-3.5 w-3.5" />
                       Skip
                     </Button>
-                    <Button size="sm" onClick={openFromSuggestion} disabled={!isToday}>
+                    <Button
+                      size="sm"
+                      onClick={() => openFromSuggestion(nextCardio)}
+                      disabled={!canActOnNext}
+                    >
                       Log cardio
                     </Button>
                   </div>
@@ -266,30 +298,80 @@ export function CardioPage() {
             </Card>
           )}
 
-          {nextCardio && isToday && (
+          {/* Past pending cardio from the current week */}
+          {pastPending.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">
+                Pending this week
+              </p>
+              {pastPending.map((day) => {
+                const { label: dayLabel } = getDateLabel(day.date);
+                return (
+                  <Card key={`${day.weekIndex}:${day.dayIndex}`} className="border-border/60">
+                    <CardContent className="py-3">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-7 w-7 rounded-md flex items-center justify-center bg-muted text-muted-foreground shrink-0">
+                            <Clock className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm truncate">{day.template.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Week {day.weekIndex + 1} · Day {day.dayIndex + 1}
+                              <span className="ml-2">· {dayLabel}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => openSkipForDay(day)}
+                            aria-label="Skip this cardio"
+                          >
+                            <SkipForward className="h-3.5 w-3.5" />
+                            Skip
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openFromSuggestion(day)}
+                          >
+                            Log cardio
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {activeSkipTarget && (
             <SkipDayModal
               open={skipDay.confirmOpen}
-              workoutName={nextCardio.template.name}
-              weekIndex={nextCardio.weekIndex}
-              dayIndex={nextCardio.dayIndex}
+              workoutName={activeSkipTarget.template.name}
+              weekIndex={activeSkipTarget.weekIndex}
+              dayIndex={activeSkipTarget.dayIndex}
               isPending={skipDay.isPending}
               isSkipError={skipDay.isSkipError}
               isMoveError={skipDay.isMoveError}
               onSkip={(notes) =>
                 skipDay.skip({
-                  weekIndex: nextCardio.weekIndex,
-                  dayIndex: nextCardio.dayIndex,
+                  weekIndex: activeSkipTarget.weekIndex,
+                  dayIndex: activeSkipTarget.dayIndex,
                   component: "cardio",
                   notes,
                 })
               }
               onMove={() =>
                 skipDay.move({
-                  weekIndex: nextCardio.weekIndex,
-                  dayIndex: nextCardio.dayIndex,
+                  weekIndex: activeSkipTarget.weekIndex,
+                  dayIndex: activeSkipTarget.dayIndex,
                 })
               }
-              onClose={skipDay.closeConfirm}
+              onClose={closeSkipModal}
             />
           )}
         </>

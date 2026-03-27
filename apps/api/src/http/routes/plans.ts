@@ -393,6 +393,85 @@ export const planRoutes = new Hono()
         logsByDay.set(key, arr);
       }
 
+      // Auto-skip unresolved training slots from past microcycles (weeks that have ended).
+      // A week has ended when the current calendar position is past its last day.
+
+      const autoSkipInserts: {
+        userId: string;
+        trainingPlanId: string;
+        planDayId: string;
+        weekIndex: number;
+        dayIndex: number;
+        status: string;
+      }[] = [];
+
+      for (const mc of plan.microcycles) {
+        const wi = mc.position - 1; // 0-based weekIndex
+
+        // Only process weeks that are strictly before the current week.
+        // For cyclic plans (mesocycle repeats), compare absolute week position.
+        const absoluteCurrentWeek = Math.floor(daysSince / plan.microcycleLength);
+        const absoluteSlotWeek =
+          wi + Math.floor(absoluteCurrentWeek / plan.mesocycleLength) * plan.mesocycleLength;
+        // A past cycle's week
+        if (absoluteSlotWeek >= absoluteCurrentWeek) continue;
+
+        for (const day of mc.days) {
+          if (day.type !== "training") continue;
+          const di = day.dayNumber - 1; // 0-based dayIndex
+          const key = `${wi}:${di}`;
+          const statuses = logsByDay.get(key) ?? [];
+          const hasWorkout = !!day.workoutTemplateId;
+          const hasCardio = !!day.cardioTemplateId;
+
+          // Insert workout_skipped if workout exists and not yet resolved
+          if (
+            hasWorkout &&
+            !statuses.includes("workout_completed") &&
+            !statuses.includes("workout_skipped") &&
+            !statuses.includes("skipped") &&
+            !statuses.includes("completed")
+          ) {
+            autoSkipInserts.push({
+              userId,
+              trainingPlanId: plan.id,
+              planDayId: day.id,
+              weekIndex: wi,
+              dayIndex: di,
+              status: "workout_skipped",
+            });
+            const arr = logsByDay.get(key) ?? [];
+            arr.push("workout_skipped");
+            logsByDay.set(key, arr);
+          }
+
+          // Insert cardio_skipped if cardio exists and not yet resolved
+          if (
+            hasCardio &&
+            !statuses.includes("cardio_completed") &&
+            !statuses.includes("cardio_skipped") &&
+            !statuses.includes("skipped") &&
+            !statuses.includes("completed")
+          ) {
+            autoSkipInserts.push({
+              userId,
+              trainingPlanId: plan.id,
+              planDayId: day.id,
+              weekIndex: wi,
+              dayIndex: di,
+              status: "cardio_skipped",
+            });
+            const arr = logsByDay.get(key) ?? [];
+            arr.push("cardio_skipped");
+            logsByDay.set(key, arr);
+          }
+        }
+      }
+
+      if (autoSkipInserts.length > 0) {
+        await db.insert(planDayLogs).values(autoSkipInserts).onConflictDoNothing();
+      }
+
       // A day slot is "fully done" (should be skipped in suggestion) when:
       //   - it has a 'skipped' or 'completed' full-day log, OR
       //   - both its workout and cardio components are resolved
@@ -646,13 +725,13 @@ export const planRoutes = new Hono()
     let totalPlanned = 0;
     let totalCompleted = 0;
     let totalSkipped = 0;
-    let totalMissed = 0;
+    let totalPending = 0;
 
     const weeks = trainingDaysByWeek.map(({ weekIndex, days }) => {
       let planned = 0;
       let completed = 0;
       let skipped = 0;
-      let missed = 0;
+      let pending = 0;
 
       for (const { dayIndex: di, hasWorkout, hasCardio } of days) {
         // Only count days that are strictly in the past
@@ -665,17 +744,17 @@ export const planRoutes = new Hono()
         const key = `${weekIndex}:${di}`;
         if (isDayCompleted(key, hasWorkout, hasCardio)) completed++;
         else if (isDaySkipped(key)) skipped++;
-        else missed++;
+        else pending++;
       }
 
-      return { weekIndex, planned, completed, skipped, missed };
+      return { weekIndex, planned, completed, skipped, pending };
     });
 
     for (const w of weeks) {
       totalPlanned += w.planned;
       totalCompleted += w.completed;
       totalSkipped += w.skipped;
-      totalMissed += w.missed;
+      totalPending += w.pending;
     }
 
     const completionRate = totalPlanned > 0 ? totalCompleted / totalPlanned : 0;
@@ -751,7 +830,7 @@ export const planRoutes = new Hono()
       let planned = 0,
         completed = 0,
         skipped = 0,
-        missed = 0;
+        pending = 0;
       for (const { dayIndex: di, hasWorkout } of days) {
         if (!hasWorkout) continue;
         const isPast =
@@ -762,18 +841,18 @@ export const planRoutes = new Hono()
         const statuses = logMap.get(key) ?? [];
         if (statuses.includes("completed") || statuses.includes("workout_completed")) completed++;
         else if (statuses.includes("skipped") || statuses.includes("workout_skipped")) skipped++;
-        else missed++;
+        else pending++;
       }
-      return { weekIndex, planned, completed, skipped, missed };
+      return { weekIndex, planned, completed, skipped, pending };
     });
     const strengthTotals = strengthWeeks.reduce(
       (acc, w) => ({
         planned: acc.planned + w.planned,
         completed: acc.completed + w.completed,
         skipped: acc.skipped + w.skipped,
-        missed: acc.missed + w.missed,
+        pending: acc.pending + w.pending,
       }),
-      { planned: 0, completed: 0, skipped: 0, missed: 0 },
+      { planned: 0, completed: 0, skipped: 0, pending: 0 },
     );
 
     // --- Cardio sub-metrics ---
@@ -781,7 +860,7 @@ export const planRoutes = new Hono()
       let planned = 0,
         completed = 0,
         skipped = 0,
-        missed = 0;
+        pending = 0;
       for (const { dayIndex: di, hasCardio } of days) {
         if (!hasCardio) continue;
         const isPast =
@@ -792,18 +871,18 @@ export const planRoutes = new Hono()
         const statuses = logMap.get(key) ?? [];
         if (statuses.includes("completed") || statuses.includes("cardio_completed")) completed++;
         else if (statuses.includes("skipped") || statuses.includes("cardio_skipped")) skipped++;
-        else missed++;
+        else pending++;
       }
-      return { weekIndex, planned, completed, skipped, missed };
+      return { weekIndex, planned, completed, skipped, pending };
     });
     const cardioTotals = cardioWeeks.reduce(
       (acc, w) => ({
         planned: acc.planned + w.planned,
         completed: acc.completed + w.completed,
         skipped: acc.skipped + w.skipped,
-        missed: acc.missed + w.missed,
+        pending: acc.pending + w.pending,
       }),
-      { planned: 0, completed: 0, skipped: 0, missed: 0 },
+      { planned: 0, completed: 0, skipped: 0, pending: 0 },
     );
 
     return c.json({
@@ -811,7 +890,7 @@ export const planRoutes = new Hono()
       totalPlanned,
       totalCompleted,
       totalSkipped,
-      totalMissed,
+      totalPending,
       currentStreak,
       longestStreak,
       totalVolume: {
@@ -891,13 +970,13 @@ export const planRoutes = new Hono()
     let totalPlanned = 0;
     let totalCompleted = 0;
     let totalSkipped = 0;
-    let totalMissed = 0;
+    let totalPending = 0;
 
     const weeks = trainingDaysByWeek.map(({ weekIndex, days }) => {
       let planned = 0;
       let completed = 0;
       let skipped = 0;
-      let missed = 0;
+      let pending = 0;
 
       for (const { dayIndex: di, hasWorkout, hasCardio } of days) {
         const isPast =
@@ -908,17 +987,17 @@ export const planRoutes = new Hono()
         const key = `${weekIndex}:${di}`;
         if (isDayCompleted(key, hasWorkout, hasCardio)) completed++;
         else if (isDaySkipped(key)) skipped++;
-        else missed++;
+        else pending++;
       }
 
-      return { weekIndex, planned, completed, skipped, missed };
+      return { weekIndex, planned, completed, skipped, pending };
     });
 
     for (const w of weeks) {
       totalPlanned += w.planned;
       totalCompleted += w.completed;
       totalSkipped += w.skipped;
-      totalMissed += w.missed;
+      totalPending += w.pending;
     }
 
     const completionRate = totalPlanned > 0 ? totalCompleted / totalPlanned : 0;
@@ -990,7 +1069,7 @@ export const planRoutes = new Hono()
       let planned = 0,
         completed = 0,
         skipped = 0,
-        missed = 0;
+        pending = 0;
       for (const { dayIndex: di, hasWorkout } of days) {
         if (!hasWorkout) continue;
         const isPast =
@@ -1001,18 +1080,18 @@ export const planRoutes = new Hono()
         const statuses = logMap.get(key) ?? [];
         if (statuses.includes("completed") || statuses.includes("workout_completed")) completed++;
         else if (statuses.includes("skipped") || statuses.includes("workout_skipped")) skipped++;
-        else missed++;
+        else pending++;
       }
-      return { weekIndex, planned, completed, skipped, missed };
+      return { weekIndex, planned, completed, skipped, pending };
     });
     const strengthTotals2 = strengthWeeks2.reduce(
       (acc, w) => ({
         planned: acc.planned + w.planned,
         completed: acc.completed + w.completed,
         skipped: acc.skipped + w.skipped,
-        missed: acc.missed + w.missed,
+        pending: acc.pending + w.pending,
       }),
-      { planned: 0, completed: 0, skipped: 0, missed: 0 },
+      { planned: 0, completed: 0, skipped: 0, pending: 0 },
     );
 
     // --- Cardio sub-metrics ---
@@ -1020,7 +1099,7 @@ export const planRoutes = new Hono()
       let planned = 0,
         completed = 0,
         skipped = 0,
-        missed = 0;
+        pending = 0;
       for (const { dayIndex: di, hasCardio } of days) {
         if (!hasCardio) continue;
         const isPast =
@@ -1031,18 +1110,18 @@ export const planRoutes = new Hono()
         const statuses = logMap.get(key) ?? [];
         if (statuses.includes("completed") || statuses.includes("cardio_completed")) completed++;
         else if (statuses.includes("skipped") || statuses.includes("cardio_skipped")) skipped++;
-        else missed++;
+        else pending++;
       }
-      return { weekIndex, planned, completed, skipped, missed };
+      return { weekIndex, planned, completed, skipped, pending };
     });
     const cardioTotals2 = cardioWeeks2.reduce(
       (acc, w) => ({
         planned: acc.planned + w.planned,
         completed: acc.completed + w.completed,
         skipped: acc.skipped + w.skipped,
-        missed: acc.missed + w.missed,
+        pending: acc.pending + w.pending,
       }),
-      { planned: 0, completed: 0, skipped: 0, missed: 0 },
+      { planned: 0, completed: 0, skipped: 0, pending: 0 },
     );
 
     return c.json({
@@ -1050,7 +1129,7 @@ export const planRoutes = new Hono()
       totalPlanned,
       totalCompleted,
       totalSkipped,
-      totalMissed,
+      totalPending,
       currentStreak,
       longestStreak,
       totalVolume: {

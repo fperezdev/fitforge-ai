@@ -1034,20 +1034,6 @@ function DayCell({
               {formatSlotDate(scheduledDate)}
             </span>
           )}
-          {/* "Missed" for past training days with no log at all */}
-          {!status &&
-            scheduledDate &&
-            day.type === "training" &&
-            (day.workoutTemplateId || day.cardioTemplateId) &&
-            (() => {
-              const today = new Date();
-              today.setHours(0, 0, 0, 0);
-              return new Date(scheduledDate + "T00:00:00") < today ? (
-                <span className="block text-[9px] font-semibold leading-tight text-destructive/70">
-                  Missed
-                </span>
-              ) : null;
-            })()}
         </span>
 
         {day.type !== "training" ? (
@@ -2175,14 +2161,14 @@ interface AdherenceWeek {
   planned: number;
   completed: number;
   skipped: number;
-  missed: number;
+  pending: number;
 }
 
 interface AdherenceComponent {
   totalPlanned: number;
   totalCompleted: number;
   totalSkipped: number;
-  totalMissed: number;
+  totalPending: number;
   weeks: AdherenceWeek[];
 }
 
@@ -2191,7 +2177,7 @@ interface Adherence {
   totalPlanned: number;
   totalCompleted: number;
   totalSkipped: number;
-  totalMissed: number;
+  totalPending: number;
   currentStreak: number;
   longestStreak: number;
   totalVolume: { sets: number; reps: number; weightKg: number };
@@ -2215,13 +2201,13 @@ function PlanAdherenceCard({ adherence }: { adherence: Adherence }) {
         planned: component.totalPlanned,
         completed: component.totalCompleted,
         skipped: component.totalSkipped,
-        missed: component.totalMissed,
+        missed: component.totalPending,
       }
     : {
         planned: adherence.totalPlanned,
         completed: adherence.totalCompleted,
         skipped: adherence.totalSkipped,
-        missed: adherence.totalMissed,
+        missed: adherence.totalPending,
       };
 
   return (
@@ -2307,7 +2293,7 @@ function PlanAdherenceCard({ adherence }: { adherence: Adherence }) {
             <span className="text-center">Planned</span>
             <span className="text-center text-emerald-600 dark:text-emerald-400">Done</span>
             <span className="text-center text-amber-600 dark:text-amber-400">Skip</span>
-            <span className="text-center text-destructive/70">Miss</span>
+            <span className="text-center text-destructive/70">Pending</span>
           </div>
           {weeksToShow.map((w) => (
             <div
@@ -2324,7 +2310,7 @@ function PlanAdherenceCard({ adherence }: { adherence: Adherence }) {
               <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
                 {w.skipped}
               </span>
-              <span className="text-center tabular-nums text-destructive/70">{w.missed}</span>
+              <span className="text-center tabular-nums text-destructive/70">{w.pending}</span>
             </div>
           ))}
 
@@ -2339,7 +2325,9 @@ function PlanAdherenceCard({ adherence }: { adherence: Adherence }) {
               <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
                 {totals.skipped}
               </span>
-              <span className="text-center tabular-nums text-destructive/70">{totals.missed}</span>
+              <span className="text-center tabular-nums text-destructive/70">
+                {totals.missed}
+              </span>{" "}
             </div>
           )}
         </div>

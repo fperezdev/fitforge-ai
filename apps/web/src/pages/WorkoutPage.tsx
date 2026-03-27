@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { Play, ListChecks, Dumbbell, SkipForward, CheckCircle2, ChevronRight } from "lucide-react";
+import {
+  Play,
+  ListChecks,
+  Dumbbell,
+  SkipForward,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +18,13 @@ import { Modal } from "@/components/ui/modal";
 import { SkipDayModal } from "@/components/ui/skip-day-modal";
 import { useSkipDay } from "@/hooks/useSkipDay";
 import { formatDuration } from "@/lib/utils";
-import { type ActivePlan, findNextDay, getDateLabel } from "@/lib/planUtils";
+import {
+  type ActivePlan,
+  type NextDay,
+  findNextDay,
+  getPastPendingDays,
+  getDateLabel,
+} from "@/lib/planUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Session {
@@ -51,6 +65,9 @@ export function WorkoutPage() {
     () => routeState?.dayIndex ?? null,
   );
 
+  // Track which day the skip modal is targeting (next-day card or a past-pending card)
+  const [skipTarget, setSkipTarget] = useState<NextDay | null>(null);
+
   useEffect(() => {
     if ((location.state as typeof routeState)?.planDayId) {
       navigate(location.pathname, { replace: true, state: null });
@@ -87,17 +104,25 @@ export function WorkoutPage() {
   const isLoading = sessionsLoading || planLoading;
   const activeSession = sessions.find((s) => s.status === "in_progress");
   const nextStrength = activePlan ? findNextDay(activePlan, "workout") : null;
-  const { label: dateLabel, isToday } = nextStrength
-    ? getDateLabel(nextStrength.date)
-    : { label: "", isToday: false };
+  const pastPending = activePlan ? getPastPendingDays(activePlan, "workout") : [];
 
-  function openConfirmFromSuggestion() {
-    if (!nextStrength) return;
-    setPendingTemplateId(nextStrength.template.id);
-    setPendingTemplateName(nextStrength.template.name);
-    setPendingPlanDayId(nextStrength.planDayId);
-    setPendingWeekIndex(nextStrength.weekIndex);
-    setPendingDayIndex(nextStrength.dayIndex);
+  const {
+    label: dateLabel,
+    isToday,
+    isPast,
+  } = nextStrength ? getDateLabel(nextStrength.date) : { label: "", isToday: false, isPast: false };
+
+  const canActOnNext = isToday || isPast;
+
+  // The active target for the skip modal
+  const activeSkipTarget = skipTarget ?? nextStrength;
+
+  function openConfirmForDay(day: NextDay) {
+    setPendingTemplateId(day.template.id);
+    setPendingTemplateName(day.template.name);
+    setPendingPlanDayId(day.planDayId);
+    setPendingWeekIndex(day.weekIndex);
+    setPendingDayIndex(day.dayIndex);
     setConfirmModal(true);
   }
 
@@ -108,6 +133,16 @@ export function WorkoutPage() {
     setPendingPlanDayId(null);
     setPendingWeekIndex(null);
     setPendingDayIndex(null);
+  }
+
+  function openSkipForDay(day: NextDay) {
+    setSkipTarget(day);
+    skipDay.openConfirm();
+  }
+
+  function closeSkipModal() {
+    skipDay.closeConfirm();
+    setSkipTarget(null);
   }
 
   return (
@@ -214,7 +249,8 @@ export function WorkoutPage() {
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                              {isToday ? "Today's plan" : "Upcoming"} · {activePlan.name}
+                              {isToday ? "Today's plan" : isPast ? "Pending" : "Upcoming"} ·{" "}
+                              {activePlan.name}
                             </p>
                             <p className="font-medium truncate">{nextStrength.template.name}</p>
                             <p className="text-xs text-muted-foreground">
@@ -227,14 +263,18 @@ export function WorkoutPage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={skipDay.openConfirm}
-                            disabled={!isToday}
-                            aria-label="Skip today's workout"
+                            onClick={() => openSkipForDay(nextStrength)}
+                            disabled={!canActOnNext}
+                            aria-label="Skip this workout"
                           >
                             <SkipForward className="h-3.5 w-3.5" />
                             Skip
                           </Button>
-                          <Button size="sm" onClick={openConfirmFromSuggestion} disabled={!isToday}>
+                          <Button
+                            size="sm"
+                            onClick={() => openConfirmForDay(nextStrength)}
+                            disabled={!canActOnNext}
+                          >
                             <Play className="h-3 w-3" />
                             Start
                           </Button>
@@ -266,6 +306,57 @@ export function WorkoutPage() {
                     </Button>
                   </CardContent>
                 </Card>
+              )}
+
+              {/* Past pending workouts from the current week */}
+              {pastPending.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">
+                    Pending this week
+                  </p>
+                  {pastPending.map((day) => {
+                    const { label: dayLabel } = getDateLabel(day.date);
+                    return (
+                      <Card key={`${day.weekIndex}:${day.dayIndex}`} className="border-border/60">
+                        <CardContent className="py-3">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="h-7 w-7 rounded-md flex items-center justify-center bg-muted text-muted-foreground shrink-0">
+                                <Clock className="h-3.5 w-3.5" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-medium text-sm truncate">{day.template.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Week {day.weekIndex + 1} · Day {day.dayIndex + 1}
+                                  <span className="ml-2">· {dayLabel}</span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => openSkipForDay(day)}
+                                aria-label="Skip this workout"
+                              >
+                                <SkipForward className="h-3.5 w-3.5" />
+                                Skip
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openConfirmForDay(day)}
+                              >
+                                <Play className="h-3 w-3" />
+                                Start
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
               )}
             </>
           )}
@@ -320,7 +411,7 @@ export function WorkoutPage() {
         </>
       )}
 
-      <Modal open={confirmModal} onClose={closeConfirmModal} title="Start today's workout?">
+      <Modal open={confirmModal} onClose={closeConfirmModal} title="Start workout?">
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {pendingTemplateName ? (
@@ -330,7 +421,7 @@ export function WorkoutPage() {
                 from your active plan.
               </>
             ) : (
-              "This will start a session for today's plan day."
+              "This will start a session for this plan day."
             )}
           </p>
           {startMutation.isError && (
@@ -352,30 +443,30 @@ export function WorkoutPage() {
         </div>
       </Modal>
 
-      {nextStrength && isToday && (
+      {activeSkipTarget && (
         <SkipDayModal
           open={skipDay.confirmOpen}
-          workoutName={nextStrength.template.name}
-          weekIndex={nextStrength.weekIndex}
-          dayIndex={nextStrength.dayIndex}
+          workoutName={activeSkipTarget.template.name}
+          weekIndex={activeSkipTarget.weekIndex}
+          dayIndex={activeSkipTarget.dayIndex}
           isPending={skipDay.isPending}
           isSkipError={skipDay.isSkipError}
           isMoveError={skipDay.isMoveError}
           onSkip={(notes) =>
             skipDay.skip({
-              weekIndex: nextStrength.weekIndex,
-              dayIndex: nextStrength.dayIndex,
+              weekIndex: activeSkipTarget.weekIndex,
+              dayIndex: activeSkipTarget.dayIndex,
               component: "workout",
               notes,
             })
           }
           onMove={() =>
             skipDay.move({
-              weekIndex: nextStrength.weekIndex,
-              dayIndex: nextStrength.dayIndex,
+              weekIndex: activeSkipTarget.weekIndex,
+              dayIndex: activeSkipTarget.dayIndex,
             })
           }
-          onClose={skipDay.closeConfirm}
+          onClose={closeSkipModal}
         />
       )}
     </div>

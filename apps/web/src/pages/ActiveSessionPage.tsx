@@ -186,7 +186,23 @@ export function ActiveSessionPage() {
       setId: string;
       data: Record<string, unknown>;
     }) => api.patch(`/sessions/${id}/exercises/${entryId}/sets/${setId}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session", id] }),
+    onSuccess: (updatedSet, { entryId, setId }) => {
+      const patch = updatedSet as Partial<Session["exerciseEntries"][0]["sets"][0]>;
+      queryClient.setQueryData<Session>(["session", id], (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          exerciseEntries: prev.exerciseEntries.map((entry) =>
+            entry.id !== entryId
+              ? entry
+              : {
+                  ...entry,
+                  sets: entry.sets.map((s) => (s.id !== setId ? s : { ...s, ...patch })),
+                },
+          ),
+        };
+      });
+    },
   });
 
   const addSetMutation = useMutation({

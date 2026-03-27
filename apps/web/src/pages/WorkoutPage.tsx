@@ -11,6 +11,7 @@ import { SkipDayModal } from "@/components/ui/skip-day-modal";
 import { useSkipDay } from "@/hooks/useSkipDay";
 import { formatDuration } from "@/lib/utils";
 import { type ActivePlan, findNextDay, getDateLabel } from "@/lib/planUtils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Session {
   id: string;
@@ -25,7 +26,6 @@ export function WorkoutPage() {
   const location = useLocation();
   const queryClient = useQueryClient();
 
-  // Initialize pending plan-day state from router location.state (if navigated from plan)
   const routeState = location.state as {
     templateId?: string;
     templateName?: string;
@@ -51,7 +51,6 @@ export function WorkoutPage() {
     () => routeState?.dayIndex ?? null,
   );
 
-  // Clear router state after reading it so back-navigation doesn't re-trigger
   useEffect(() => {
     if ((location.state as typeof routeState)?.planDayId) {
       navigate(location.pathname, { replace: true, state: null });
@@ -85,19 +84,12 @@ export function WorkoutPage() {
 
   const skipDay = useSkipDay();
 
+  const isLoading = sessionsLoading || planLoading;
   const activeSession = sessions.find((s) => s.status === "in_progress");
   const nextStrength = activePlan ? findNextDay(activePlan, "workout") : null;
   const { label: dateLabel, isToday } = nextStrength
     ? getDateLabel(nextStrength.date)
     : { label: "", isToday: false };
-
-  if (sessionsLoading || planLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
 
   function openConfirmFromSuggestion() {
     if (!nextStrength) return;
@@ -120,204 +112,214 @@ export function WorkoutPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Workouts</h1>
-          <p className="text-sm text-muted-foreground mt-1">{sessions.length} sessions logged</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold">Workouts</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {isLoading ? "\u00A0" : `${sessions.length} sessions logged`}
+        </p>
       </div>
 
-      {/* Active (in-progress) session banner */}
-      {activeSession && (
-        <Card className="border-primary bg-primary/5">
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Active session</p>
-                <p className="text-sm text-muted-foreground">{activeSession.name ?? "Unnamed"}</p>
-              </div>
-              <Button size="sm" onClick={() => navigate(`/workout/${activeSession.id}`)}>
-                Resume
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Plan suggestion — strength only */}
-      {!activeSession && (
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+      ) : (
         <>
-          {/* Post-skip feedback */}
-          {skipDay.skipped && (
-            <Card className="border-amber-500/30 bg-amber-500/5">
+          {activeSession && (
+            <Card className="border-primary bg-primary/5">
               <CardContent className="py-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-amber-800 dark:text-amber-200">
-                      Workout skipped
-                    </p>
-                    <p className="text-sm text-amber-700/70 dark:text-amber-300/70 mt-0.5">
-                      Your next planned session is shown below.
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Active session</p>
+                    <p className="text-sm text-muted-foreground">
+                      {activeSession.name ?? "Unnamed"}
                     </p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="shrink-0 text-amber-700 hover:text-amber-900 dark:text-amber-300"
-                    onClick={skipDay.resetSkipped}
-                  >
-                    Dismiss
+                  <Button size="sm" onClick={() => navigate(`/workout/${activeSession.id}`)}>
+                    Resume
                   </Button>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Post-move feedback */}
-          {skipDay.moved && (
-            <Card className="border-emerald-500/30 bg-emerald-500/5">
-              <CardContent className="py-4">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-emerald-800 dark:text-emerald-200">
-                      Workout moved
-                    </p>
-                    <p className="text-sm text-emerald-700/70 dark:text-emerald-300/70 mt-0.5">
-                      Your schedule has shifted forward by one day.
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="shrink-0 text-emerald-700 hover:text-emerald-900 dark:text-emerald-300"
-                    onClick={skipDay.resetMoved}
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {activePlan ? (
-            nextStrength ? (
-              <Card className="border-primary/40 bg-primary/5">
-                <CardContent className="py-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0">
-                        <ListChecks className="h-4 w-4" />
+          {!activeSession && (
+            <>
+              {skipDay.skipped && (
+                <Card className="border-amber-500/30 bg-amber-500/5">
+                  <CardContent className="py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                        <CheckCircle2 className="h-4 w-4" />
                       </div>
-                      <div className="min-w-0">
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                          {isToday ? "Today's plan" : "Upcoming"} · {activePlan.name}
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-amber-800 dark:text-amber-200">
+                          Workout skipped
                         </p>
-                        <p className="font-medium truncate">{nextStrength.template.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Week {nextStrength.weekIndex + 1} · Day {nextStrength.dayIndex + 1}
-                          <span className="ml-2">· {dateLabel}</span>
+                        <p className="text-sm text-amber-700/70 dark:text-amber-300/70 mt-0.5">
+                          Your next planned session is shown below.
                         </p>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={skipDay.openConfirm}
-                        disabled={!isToday}
-                        aria-label="Skip today's workout"
+                        className="shrink-0 text-amber-700 hover:text-amber-900 dark:text-amber-300"
+                        onClick={skipDay.resetSkipped}
                       >
-                        <SkipForward className="h-3.5 w-3.5" />
-                        Skip
+                        Dismiss
                       </Button>
-                      <Button size="sm" onClick={openConfirmFromSuggestion} disabled={!isToday}>
-                        <Play className="h-3 w-3" />
-                        Start
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="border-dashed">
-                <CardContent className="py-6 text-center text-sm text-muted-foreground">
-                  No strength workouts in your plan.
-                </CardContent>
-              </Card>
-            )
-          ) : (
-            <Card className="border-dashed">
-              <CardContent className="py-8 flex flex-col items-center gap-3 text-center">
-                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
-                  <Dumbbell className="h-5 w-5 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="font-medium">No active training plan</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Activate a plan to start tracking workouts.
-                  </p>
-                </div>
-                <Button size="sm" variant="outline" asChild>
-                  <Link to="/planner">Go to Plans</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </>
-      )}
-
-      {/* Session history */}
-      <div className="space-y-3">
-        {sessions.filter((s) => s.status !== "in_progress").length === 0 && !activeSession && (
-          <p className="text-sm text-muted-foreground text-center py-4">No sessions logged yet.</p>
-        )}
-        {sessions
-          .filter((s) => s.status !== "in_progress")
-          .map((session) => {
-            const duration = session.completedAt
-              ? Math.floor(
-                  (new Date(session.completedAt).getTime() -
-                    new Date(session.startedAt).getTime()) /
-                    1000,
-                )
-              : null;
-            return (
-              <Link key={session.id} to={`/workout/history/${session.id}`}>
-                <Card className="hover:border-primary/40 transition-colors">
-                  <CardContent className="py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{session.name ?? "Unnamed session"}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(session.startedAt).toLocaleDateString("en-US", {
-                            weekday: "short",
-                            month: "short",
-                            day: "numeric",
-                          })}
-                          {duration && ` · ${formatDuration(duration)}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={session.status === "completed" ? "success" : "secondary"}>
-                          {session.status}
-                        </Badge>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </div>
                     </div>
                   </CardContent>
                 </Card>
-              </Link>
-            );
-          })}
-      </div>
+              )}
 
-      {/* Start session confirmation modal */}
+              {skipDay.moved && (
+                <Card className="border-emerald-500/30 bg-emerald-500/5">
+                  <CardContent className="py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-emerald-800 dark:text-emerald-200">
+                          Workout moved
+                        </p>
+                        <p className="text-sm text-emerald-700/70 dark:text-emerald-300/70 mt-0.5">
+                          Your schedule has shifted forward by one day.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="shrink-0 text-emerald-700 hover:text-emerald-900 dark:text-emerald-300"
+                        onClick={skipDay.resetMoved}
+                      >
+                        Dismiss
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {activePlan ? (
+                nextStrength ? (
+                  <Card className="border-primary/40 bg-primary/5">
+                    <CardContent className="py-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0">
+                            <ListChecks className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
+                              {isToday ? "Today's plan" : "Upcoming"} · {activePlan.name}
+                            </p>
+                            <p className="font-medium truncate">{nextStrength.template.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Week {nextStrength.weekIndex + 1} · Day {nextStrength.dayIndex + 1}
+                              <span className="ml-2">· {dateLabel}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={skipDay.openConfirm}
+                            disabled={!isToday}
+                            aria-label="Skip today's workout"
+                          >
+                            <SkipForward className="h-3.5 w-3.5" />
+                            Skip
+                          </Button>
+                          <Button size="sm" onClick={openConfirmFromSuggestion} disabled={!isToday}>
+                            <Play className="h-3 w-3" />
+                            Start
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="border-dashed">
+                    <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                      No strength workouts in your plan.
+                    </CardContent>
+                  </Card>
+                )
+              ) : (
+                <Card className="border-dashed">
+                  <CardContent className="py-8 flex flex-col items-center gap-3 text-center">
+                    <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                      <Dumbbell className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="font-medium">No active training plan</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Activate a plan to start tracking workouts.
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline" asChild>
+                      <Link to="/planner">Go to Plans</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+
+          <div className="space-y-3">
+            {sessions.filter((s) => s.status !== "in_progress").length === 0 && !activeSession && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No sessions logged yet.
+              </p>
+            )}
+            {sessions
+              .filter((s) => s.status !== "in_progress")
+              .map((session) => {
+                const duration = session.completedAt
+                  ? Math.floor(
+                      (new Date(session.completedAt).getTime() -
+                        new Date(session.startedAt).getTime()) /
+                        1000,
+                    )
+                  : null;
+                return (
+                  <Link key={session.id} to={`/workout/history/${session.id}`}>
+                    <Card className="hover:border-primary/40 transition-colors">
+                      <CardContent className="py-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">{session.name ?? "Unnamed session"}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {new Date(session.startedAt).toLocaleDateString("en-US", {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                              {duration && ` · ${formatDuration(duration)}`}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant={session.status === "completed" ? "success" : "secondary"}
+                            >
+                              {session.status}
+                            </Badge>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                );
+              })}
+          </div>
+        </>
+      )}
+
       <Modal open={confirmModal} onClose={closeConfirmModal} title="Start today's workout?">
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
@@ -350,7 +352,6 @@ export function WorkoutPage() {
         </div>
       </Modal>
 
-      {/* Skip / Move workout modal */}
       {nextStrength && isToday && (
         <SkipDayModal
           open={skipDay.confirmOpen}

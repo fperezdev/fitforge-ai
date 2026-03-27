@@ -3,6 +3,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/lib/api";
+import { Spinner } from "@/components/ui/spinner";
 
 export function RequireAuth() {
   const { user, isLoading, checkAuth } = useAuthStore();
@@ -29,7 +30,7 @@ export function RequireAuth() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+        <Spinner size="lg" />
       </div>
     );
   }

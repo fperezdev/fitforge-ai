@@ -6,6 +6,7 @@ import type { CardioSession } from "@fitforge/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistance, formatDuration, formatPace } from "@/lib/utils";
 
 export function CardioDetailPage() {
@@ -21,15 +22,7 @@ export function CardioDetailPage() {
     queryFn: () => api.get(`/cardio/${id}`),
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (isError || !session) {
+  if (isError) {
     return (
       <div className="space-y-4">
         <Button variant="ghost" size="sm" onClick={() => navigate("/cardio")}>
@@ -37,6 +30,32 @@ export function CardioDetailPage() {
           Back
         </Button>
         <p className="text-sm text-muted-foreground text-center py-8">Session not found.</p>
+      </div>
+    );
+  }
+
+  if (isLoading || !session) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/cardio")}
+            className="-ml-2 mb-3"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Cardio
+          </Button>
+          <Skeleton className="h-8 w-32 mb-2" />
+          <Skeleton className="h-4 w-40" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
       </div>
     );
   }

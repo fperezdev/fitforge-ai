@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 interface Session {
@@ -186,8 +187,9 @@ export function ActiveSessionPage() {
       setId: string;
       data: Record<string, unknown>;
     }) => api.patch(`/sessions/${id}/exercises/${entryId}/sets/${setId}`, data),
-    onSuccess: (updatedSet, { entryId, setId }) => {
-      const patch = updatedSet as Partial<Session["exerciseEntries"][0]["sets"][0]>;
+    onMutate: async ({ entryId, setId, data }) => {
+      await queryClient.cancelQueries({ queryKey: ["session", id] });
+      const previous = queryClient.getQueryData<Session>(["session", id]);
       queryClient.setQueryData<Session>(["session", id], (prev) => {
         if (!prev) return prev;
         return {
@@ -197,11 +199,17 @@ export function ActiveSessionPage() {
               ? entry
               : {
                   ...entry,
-                  sets: entry.sets.map((s) => (s.id !== setId ? s : { ...s, ...patch })),
+                  sets: entry.sets.map((s) => (s.id !== setId ? s : { ...s, ...data })),
                 },
           ),
         };
       });
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["session", id], context.previous);
+      }
     },
   });
 
@@ -226,8 +234,20 @@ export function ActiveSessionPage() {
 
   if (isLoading || !session) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-28" />
+          </div>
+          <Skeleton className="h-8 w-20 rounded-md" />
+        </div>
+        <Skeleton className="h-1.5 rounded-full" />
+        <div className="space-y-3">
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+        </div>
       </div>
     );
   }

@@ -15,6 +15,7 @@ import type { WeightEntry } from "@fitforge/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DatePicker } from "@/components/ui/date-picker";
 
 function todayISO() {
@@ -42,15 +43,43 @@ export function BodyPage() {
 
   const logMutation = useMutation({
     mutationFn: (payload: { date: string; weightKg: number }) => api.post("/body/weight", payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["weight"] });
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: ["weight"] });
+      const previous = queryClient.getQueryData<WeightEntry[]>(["weight"]);
+      // Optimistically append a placeholder entry
+      queryClient.setQueryData<WeightEntry[]>(["weight"], (prev = []) => [
+        ...prev,
+        {
+          id: `optimistic-${Date.now()}`,
+          userId: "",
+          date: payload.date,
+          weightKg: payload.weightKg,
+          notes: null,
+        },
+      ]);
       closeModal();
+      return { previous };
     },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(["weight"], context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["weight"] }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (entryDate: string) => api.delete(`/body/weight/${entryDate}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["weight"] }),
+    onMutate: async (entryDate) => {
+      await queryClient.cancelQueries({ queryKey: ["weight"] });
+      const previous = queryClient.getQueryData<WeightEntry[]>(["weight"]);
+      queryClient.setQueryData<WeightEntry[]>(["weight"], (prev = []) =>
+        prev.filter((e) => e.date !== entryDate),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(["weight"], context.previous);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["weight"] }),
   });
 
   function openModal() {
@@ -81,8 +110,32 @@ export function BodyPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <Skeleton className="h-7 w-20" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <Skeleton className="h-8 w-28 rounded-md" />
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-32" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-[220px]" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-20" />
+          </CardHeader>
+          <CardContent className="space-y-3 py-4">
+            <Skeleton className="h-10" />
+            <Skeleton className="h-10" />
+            <Skeleton className="h-10" />
+          </CardContent>
+        </Card>
       </div>
     );
   }

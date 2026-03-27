@@ -16,6 +16,7 @@ import type { WeightEntry } from "@fitforge/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface PR {
   id: string;
@@ -49,13 +50,7 @@ export function ProgressPage() {
     queryFn: () => api.get("/body/measurements"),
   });
 
-  if (prsLoading || weightLoading || measurementsLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
+  const isLoading = prsLoading || weightLoading || measurementsLoading;
 
   const weightData = weight.map((w) => ({
     date: w.date.slice(5),
@@ -85,8 +80,32 @@ export function ProgressPage() {
         )}
       </div>
 
+      {/* Loading skeletons */}
+      {isLoading && (
+        <>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-32" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-[220px]" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-48" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
+            </CardContent>
+          </Card>
+        </>
+      )}
+
       {/* Empty state */}
-      {isEmpty && (
+      {!isLoading && isEmpty && (
         <Card>
           <CardContent className="py-12">
             <div className="flex flex-col items-center text-center gap-4">
@@ -109,7 +128,7 @@ export function ProgressPage() {
       )}
 
       {/* Weight chart */}
-      {weightData.length > 1 && (
+      {!isLoading && weightData.length > 1 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -153,7 +172,7 @@ export function ProgressPage() {
       )}
 
       {/* Personal Records */}
-      {(!isEmpty || latestPRs.length > 0) && (
+      {!isLoading && (!isEmpty || latestPRs.length > 0) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -198,7 +217,7 @@ export function ProgressPage() {
       )}
 
       {/* Body measurements */}
-      {measurements.length > 0 && (
+      {!isLoading && measurements.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">

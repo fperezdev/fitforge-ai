@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatDuration } from "@/lib/utils";
 import { muscleLabel } from "@/lib/muscleLabels";
 
@@ -57,15 +58,7 @@ export function WorkoutDetailPage() {
     },
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (isError || !session) {
+  if (isError) {
     return (
       <div className="space-y-4">
         <Button variant="ghost" size="sm" onClick={() => navigate("/workout")}>
@@ -73,6 +66,37 @@ export function WorkoutDetailPage() {
           Back
         </Button>
         <p className="text-sm text-muted-foreground text-center py-8">Session not found.</p>
+      </div>
+    );
+  }
+
+  if (isLoading || !session) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/workout")}
+            className="-ml-2 mb-3"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Workouts
+          </Button>
+          <Skeleton className="h-8 w-48 mb-2" />
+          <Skeleton className="h-4 w-32" />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+        <Skeleton className="h-20" />
+        <div className="space-y-3">
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+          <Skeleton className="h-14" />
+        </div>
       </div>
     );
   }

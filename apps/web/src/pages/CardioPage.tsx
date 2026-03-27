@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SkipDayModal } from "@/components/ui/skip-day-modal";
 import { useSkipDay } from "@/hooks/useSkipDay";
 import { formatDistance, formatDuration, formatPace } from "@/lib/utils";
@@ -102,26 +103,15 @@ export function CardioPage() {
         queryClient.invalidateQueries({ queryKey: ["cardio"] }),
         queryClient.invalidateQueries({ queryKey: ["activePlan"] }),
       ]);
-      setModalOpen(false);
-      reset();
-      setPlanDayId(null);
-      setPlanWeekIndex(null);
-      setPlanDayIndex(null);
+      closeModal();
     },
   });
 
+  const isLoading = sessionsLoading || planLoading;
   const nextCardio = activePlan ? findNextDay(activePlan, "cardio") : null;
   const { label: dateLabel, isToday } = nextCardio
     ? getDateLabel(nextCardio.date)
     : { label: "", isToday: false };
-
-  if (sessionsLoading || planLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
 
   function openFromSuggestion() {
     if (!nextCardio) return;
@@ -143,7 +133,13 @@ export function CardioPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Cardio</h1>
-        <p className="text-sm text-muted-foreground mt-1">{sessions.length} sessions</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          {isLoading ? (
+            <Skeleton className="h-4 w-20 inline-block" />
+          ) : (
+            `${sessions.length} sessions`
+          )}
+        </p>
       </div>
 
       {/* No active plan banner */}
@@ -300,45 +296,61 @@ export function CardioPage() {
       )}
 
       <div className="space-y-3">
-        {sessions.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-4">No sessions logged yet.</p>
-        )}
-        {sessions.map((s) => (
-          <Link key={s.id} to={`/cardio/${s.id}`}>
-            <Card className="hover:border-primary/40 transition-colors">
-              <CardContent className="py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium capitalize">{s.type}</span>
-                      {s.distanceMeters && (
-                        <Badge variant="secondary">{formatDistance(s.distanceMeters)}</Badge>
-                      )}
-                      {s.avgPaceSecondsPerKm && (
-                        <Badge variant="secondary">{formatPace(s.avgPaceSecondsPerKm)} /km</Badge>
-                      )}
+        {isLoading ? (
+          <>
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+            <Skeleton className="h-16" />
+          </>
+        ) : (
+          <>
+            {sessions.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No sessions logged yet.
+              </p>
+            )}
+            {sessions.map((s) => (
+              <Link key={s.id} to={`/cardio/${s.id}`}>
+                <Card className="hover:border-primary/40 transition-colors">
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium capitalize">{s.type}</span>
+                          {s.distanceMeters && (
+                            <Badge variant="secondary">{formatDistance(s.distanceMeters)}</Badge>
+                          )}
+                          {s.avgPaceSecondsPerKm && (
+                            <Badge variant="secondary">
+                              {formatPace(s.avgPaceSecondsPerKm)} /km
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          {new Date(s.startedAt).toLocaleDateString("en-US", {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                          {s.durationSeconds && ` · ${formatDuration(s.durationSeconds)}`}
+                          {s.avgHeartRate && ` · ♥ ${s.avgHeartRate} bpm`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {s.caloriesBurned && (
+                          <span className="text-sm text-muted-foreground">
+                            {s.caloriesBurned} kcal
+                          </span>
+                        )}
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {new Date(s.startedAt).toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                      {s.durationSeconds && ` · ${formatDuration(s.durationSeconds)}`}
-                      {s.avgHeartRate && ` · ♥ ${s.avgHeartRate} bpm`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {s.caloriesBurned && (
-                      <span className="text-sm text-muted-foreground">{s.caloriesBurned} kcal</span>
-                    )}
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </>
+        )}
       </div>
 
       <Modal open={modalOpen} onClose={closeModal} title="Log cardio">

@@ -47,6 +47,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { MUSCLE_LABELS, muscleLabel } from "@/lib/muscleLabels";
 
@@ -2548,8 +2549,26 @@ export function PlanEditorPage() {
 
   if (isLoading || isAdherenceLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      <div className="space-y-5">
+        {/* Header skeleton */}
+        <div className="flex items-start gap-3">
+          <div className="flex-1 space-y-1">
+            <Skeleton className="h-7 w-48" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <Skeleton className="h-8 w-20 rounded-md shrink-0" />
+        </div>
+        {/* Tab bar skeleton */}
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-20 rounded-md" />
+          <Skeleton className="h-9 w-20 rounded-md" />
+        </div>
+        {/* Content skeleton */}
+        <div className="space-y-3">
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+        </div>
       </div>
     );
   }

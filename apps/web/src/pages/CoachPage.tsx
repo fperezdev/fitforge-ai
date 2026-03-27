@@ -24,6 +24,7 @@ import { EquipmentSelector } from "@/components/ui/equipment-selector";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 // ─── Data types ───────────────────────────────────────────────────────────────
@@ -1204,8 +1205,38 @@ export function CoachPage() {
     (activeConv && isMessagesLoading)
   ) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex h-[calc(100vh-6rem)] gap-4">
+        {/* Sidebar skeleton */}
+        <aside className="hidden md:flex flex-col w-64 shrink-0 border border-border rounded-xl bg-card overflow-hidden">
+          <div className="p-3 border-b border-border">
+            <Skeleton className="h-8 w-full rounded-md" />
+          </div>
+          <div className="flex-1 p-2 space-y-2">
+            <Skeleton className="h-9 rounded-lg" />
+            <Skeleton className="h-9 rounded-lg" />
+            <Skeleton className="h-9 rounded-lg" />
+          </div>
+        </aside>
+        {/* Chat area skeleton */}
+        <div className="flex-1 flex flex-col border border-border rounded-xl bg-card overflow-hidden">
+          <div className="flex-1 p-4 space-y-4">
+            <div className="flex gap-3">
+              <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+              <Skeleton className="h-16 flex-1 rounded-xl" />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Skeleton className="h-10 w-48 rounded-xl" />
+              <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+            </div>
+            <div className="flex gap-3">
+              <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+              <Skeleton className="h-24 flex-1 rounded-xl" />
+            </div>
+          </div>
+          <div className="p-4 border-t border-border">
+            <Skeleton className="h-10 w-full rounded-lg" />
+          </div>
+        </div>
       </div>
     );
   }

@@ -16,6 +16,7 @@ import type { WeightEntry } from "@fitforge/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 interface Stats {
   weeklySessionCount: number;
   totalSessions: number;
@@ -176,13 +177,7 @@ export function DashboardPage() {
     queryFn: () => api.get("/plans/active"),
   });
 
-  if (statsLoading || weightLoading || planLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
+  const isLoading = statsLoading || weightLoading || planLoading;
 
   const weightData = weight?.map((w) => ({
     date: w.date.slice(5), // MM-DD
@@ -204,44 +199,59 @@ export function DashboardPage() {
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={Flame}
-          label="Streak"
-          value={`${stats?.currentStreak ?? 0}d`}
-          sub="consecutive days"
-          color="bg-orange-500/10 text-orange-500"
-        />
-        <StatCard
-          icon={Calendar}
-          label="This week"
-          value={stats?.weeklySessionCount ?? 0}
-          sub="sessions"
-          color="bg-blue-500/10 text-blue-500"
-        />
-        <StatCard
-          icon={Dumbbell}
-          label="Total sessions"
-          value={stats?.totalSessions ?? 0}
-          color="bg-violet-500/10 text-violet-500"
-        />
-        <StatCard
-          icon={TrendingUp}
-          label="Last session"
-          value={
-            stats?.lastSession
-              ? new Date(stats.lastSession.completedAt).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })
-              : "—"
-          }
-          sub={stats?.lastSession?.name || "No sessions yet"}
-          color="bg-emerald-500/10 text-emerald-500"
-        />
+        {isLoading ? (
+          <>
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+          </>
+        ) : (
+          <>
+            <StatCard
+              icon={Flame}
+              label="Streak"
+              value={`${stats?.currentStreak ?? 0}d`}
+              sub="consecutive days"
+              color="bg-orange-500/10 text-orange-500"
+            />
+            <StatCard
+              icon={Calendar}
+              label="This week"
+              value={stats?.weeklySessionCount ?? 0}
+              sub="sessions"
+              color="bg-blue-500/10 text-blue-500"
+            />
+            <StatCard
+              icon={Dumbbell}
+              label="Total sessions"
+              value={stats?.totalSessions ?? 0}
+              color="bg-violet-500/10 text-violet-500"
+            />
+            <StatCard
+              icon={TrendingUp}
+              label="Last session"
+              value={
+                stats?.lastSession
+                  ? new Date(stats.lastSession.completedAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })
+                  : "—"
+              }
+              sub={stats?.lastSession?.name || "No sessions yet"}
+              color="bg-emerald-500/10 text-emerald-500"
+            />
+          </>
+        )}
       </div>
 
       {/* Active plan suggestion */}
-      {activePlan && <ActivePlanCard plan={activePlan} />}
+      {isLoading ? (
+        <Skeleton className="h-28" />
+      ) : (
+        activePlan && <ActivePlanCard plan={activePlan} />
+      )}
 
       {/* Quick actions */}
       <div>
@@ -254,7 +264,9 @@ export function DashboardPage() {
       </div>
 
       {/* Weight chart */}
-      {weightData && weightData.length > 1 && (
+      {isLoading ? (
+        <Skeleton className="h-64" />
+      ) : weightData && weightData.length > 1 ? (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -293,10 +305,10 @@ export function DashboardPage() {
             </ResponsiveContainer>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       {/* Last session */}
-      {stats?.lastSession && (
+      {!isLoading && stats?.lastSession && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">

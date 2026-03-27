@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/auth";
 import type { UserProfile, EquipmentOption } from "@fitforge/types";
 import { EquipmentSelector } from "@/components/ui/equipment-selector";
@@ -149,8 +150,32 @@ export function ProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="max-w-2xl mx-auto space-y-6 p-4 md:p-6">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <div className="space-y-1">
+            <Skeleton className="h-7 w-24" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+        </div>
+        <Card>
+          <CardContent className="py-6 space-y-4">
+            <Skeleton className="h-10" />
+            <Skeleton className="h-10" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-6 space-y-4">
+            <Skeleton className="h-10" />
+            <Skeleton className="h-10" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="py-6 space-y-4">
+            <Skeleton className="h-10" />
+            <Skeleton className="h-10" />
+          </CardContent>
+        </Card>
       </div>
     );
   }

@@ -1,14 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  Flame,
-  Dumbbell,
-  Calendar,
-  TrendingUp,
-  ArrowRight,
-  ListChecks,
-  BedDouble,
-  Activity,
-} from "lucide-react";
+import { Flame, Dumbbell, Activity, SkipForward } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { api } from "@/lib/api";
@@ -17,148 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+
 interface Stats {
-  weeklySessionCount: number;
-  totalSessions: number;
+  weeklyStrengthCount: number;
+  weeklyCardioCount: number;
+  plannedStrengthPerWeek: number;
+  plannedCardioPerWeek: number;
+  skippedCount: number;
   currentStreak: number;
-  lastSession: { name: string; completedAt: string } | null;
-}
-
-interface SuggestedDay {
-  planDayId: string;
-  weekIndex: number;
-  dayIndex: number;
-  scheduledDate: string; // YYYY-MM-DD
-  type: string;
-  workoutTemplate: { id: string; name: string } | null;
-  cardioTemplate: { id: string; name: string } | null;
-}
-
-interface ActivePlan {
-  id: string;
-  name: string;
-  suggestedDay: SuggestedDay | null;
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  color,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  sub?: string;
-  color: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-3">
-          <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${color}`}>
-            <Icon className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="text-2xl font-bold">{value}</p>
-            {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ActivePlanCard({ plan }: { plan: ActivePlan }) {
-  const day = plan.suggestedDay;
-  const isRest = !day || day.type === "rest";
-  const isTraining = !isRest;
-  const weekLabel = day ? `Week ${day.weekIndex + 1} · Day ${day.dayIndex + 1}` : null;
-
-  const todayStr = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD local
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toLocaleDateString("en-CA");
-
-  const scheduledDateLabel = day?.scheduledDate
-    ? new Date(day.scheduledDate + "T00:00:00").toLocaleDateString(undefined, {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      })
-    : null;
-
-  const dayLabel = !day?.scheduledDate
-    ? "Active plan"
-    : day.scheduledDate === todayStr
-      ? "Today's plan"
-      : day.scheduledDate === tomorrowStr
-        ? "Tomorrow's plan"
-        : "Upcoming plan";
-
-  const hasWorkout = isTraining && !!day?.workoutTemplate;
-  const hasCardio = isTraining && !!day?.cardioTemplate;
-
-  return (
-    <>
-      {/* Current/next suggested day */}
-      <Card className="border-primary/40 bg-primary/5">
-        <CardContent className="py-4 space-y-3">
-          {/* Plan header */}
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="h-9 w-9 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0 mt-0.5">
-              {isRest ? <BedDouble className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                {dayLabel}
-              </p>
-              <p className="font-semibold truncate">{plan.name}</p>
-              {weekLabel && (
-                <p className="text-sm text-muted-foreground">
-                  {weekLabel}
-                  {scheduledDateLabel && (
-                    <span className="ml-2 text-xs">· {scheduledDateLabel}</span>
-                  )}
-                </p>
-              )}
-              {isRest && (
-                <p className="text-sm text-muted-foreground mt-0.5">Rest day — recover well</p>
-              )}
-            </div>
-          </div>
-
-          {/* Workout row */}
-          {hasWorkout && day && (
-            <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/40">
-              <div className="flex items-center gap-2 min-w-0">
-                <Dumbbell className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-sm font-medium truncate">{day.workoutTemplate!.name}</span>
-              </div>
-              <Button size="sm" variant="outline" asChild className="shrink-0">
-                <Link to="/workout">Go to Workout</Link>
-              </Button>
-            </div>
-          )}
-
-          {/* Cardio row */}
-          {hasCardio && day && (
-            <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/40">
-              <div className="flex items-center gap-2 min-w-0">
-                <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-sm font-medium truncate">{day.cardioTemplate!.name}</span>
-              </div>
-              <Button size="sm" variant="outline" asChild className="shrink-0">
-                <Link to="/cardio">Go to Cardio</Link>
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </>
-  );
 }
 
 export function DashboardPage() {
@@ -172,15 +29,10 @@ export function DashboardPage() {
     queryFn: () => api.get("/body/weight?limit=30"),
   });
 
-  const { data: activePlan, isLoading: planLoading } = useQuery<ActivePlan | null>({
-    queryKey: ["activePlan"],
-    queryFn: () => api.get("/plans/active"),
-  });
-
-  const isLoading = statsLoading || weightLoading || planLoading;
+  const isLoading = statsLoading || weightLoading;
 
   const weightData = weight?.map((w) => ({
-    date: w.date.slice(5), // MM-DD
+    date: w.date.slice(5),
     kg: Number(w.weightKg),
   }));
 
@@ -198,7 +50,7 @@ export function DashboardPage() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {isLoading ? (
           <>
             <Skeleton className="h-24" />
@@ -208,50 +60,86 @@ export function DashboardPage() {
           </>
         ) : (
           <>
-            <StatCard
-              icon={Flame}
-              label="Streak"
-              value={`${stats?.currentStreak ?? 0}d`}
-              sub="consecutive days"
-              color="bg-orange-500/10 text-orange-500"
-            />
-            <StatCard
-              icon={Calendar}
-              label="This week"
-              value={stats?.weeklySessionCount ?? 0}
-              sub="sessions"
-              color="bg-blue-500/10 text-blue-500"
-            />
-            <StatCard
-              icon={Dumbbell}
-              label="Total sessions"
-              value={stats?.totalSessions ?? 0}
-              color="bg-violet-500/10 text-violet-500"
-            />
-            <StatCard
-              icon={TrendingUp}
-              label="Last session"
-              value={
-                stats?.lastSession
-                  ? new Date(stats.lastSession.completedAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  : "—"
-              }
-              sub={stats?.lastSession?.name || "No sessions yet"}
-              color="bg-emerald-500/10 text-emerald-500"
-            />
+            {/* Streak */}
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-orange-500/10 text-orange-500 shrink-0">
+                    <Flame className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Streak</p>
+                    <p className="text-2xl font-bold">{stats?.currentStreak ?? 0}d</p>
+                    <p className="text-xs text-muted-foreground">consecutive</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Skipped */}
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-slate-500/10 text-slate-500 shrink-0">
+                    <SkipForward className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Skipped</p>
+                    <p className="text-2xl font-bold">{stats?.skippedCount ?? 0}</p>
+                    <p className="text-xs text-muted-foreground">this plan</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Strength this week */}
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-violet-500/10 text-violet-500 shrink-0">
+                    <Dumbbell className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Strength</p>
+                    <p className="text-2xl font-bold">
+                      {stats?.weeklyStrengthCount ?? 0}
+                      {(stats?.plannedStrengthPerWeek ?? 0) > 0 && (
+                        <span className="text-base font-normal text-muted-foreground">
+                          /{stats?.plannedStrengthPerWeek}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">this week</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Cardio this week */}
+            <Card>
+              <CardContent className="pt-5">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-blue-500/10 text-blue-500 shrink-0">
+                    <Activity className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Cardio</p>
+                    <p className="text-2xl font-bold">
+                      {stats?.weeklyCardioCount ?? 0}
+                      {(stats?.plannedCardioPerWeek ?? 0) > 0 && (
+                        <span className="text-base font-normal text-muted-foreground">
+                          /{stats?.plannedCardioPerWeek}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground">this week</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </>
         )}
       </div>
-
-      {/* Active plan suggestion */}
-      {isLoading ? (
-        <Skeleton className="h-28" />
-      ) : (
-        activePlan && <ActivePlanCard plan={activePlan} />
-      )}
 
       {/* Quick actions */}
       <div>
@@ -306,32 +194,6 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       ) : null}
-
-      {/* Last session */}
-      {!isLoading && stats?.lastSession && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Last workout</CardTitle>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/workout">
-                  View all <ArrowRight className="h-3 w-3" />
-                </Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="font-medium">{stats.lastSession.name}</p>
-            <p className="text-sm text-muted-foreground">
-              {new Date(stats.lastSession.completedAt).toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })}
-            </p>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

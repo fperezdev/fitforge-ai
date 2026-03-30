@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DaySessionModal } from "@/components/plan/DaySessionModal";
+import { DayReviewModal } from "@/components/plan/DayReviewModal";
 import { PlannerPage } from "./PlannerPage";
 import {
   DndContext,
@@ -18,30 +19,24 @@ import {
 import {
   SortableContext,
   horizontalListSortingStrategy,
-  verticalListSortingStrategy,
   useSortable,
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Layers,
-  LayoutGrid,
   Check,
   Plus,
-  Dumbbell,
-  Activity,
   Trash2,
   Save,
   X,
-  Search,
   Pencil,
-  TrendingUp,
-  Flame,
-  Weight,
-  GripVertical,
+  BarChart2,
   MoreHorizontal,
   Copy,
-  BarChart2,
+  ListChecks,
+  BedDouble,
+  Dumbbell,
+  Activity,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -49,7 +44,7 @@ import { Modal } from "@/components/ui/modal";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { MUSCLE_LABELS, muscleLabel } from "@/lib/muscleLabels";
+import { muscleLabel } from "@/lib/muscleLabels";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,14 +118,124 @@ interface TrainingPlan {
   dayLogs?: Record<string, { workout?: string; cardio?: string }>; // "weekIndex:dayIndex" -> per-component status
 }
 
-interface Exercise {
-  id: string;
-  name: string;
-  primaryMuscle: string;
+type DayType = "training" | "rest";
+
+// ─── Today's plan types ───────────────────────────────────────────────────────
+
+interface SuggestedDay {
+  planDayId: string;
+  weekIndex: number;
+  dayIndex: number;
+  scheduledDate: string;
+  type: string;
+  workoutTemplate: { id: string; name: string } | null;
+  cardioTemplate: { id: string; name: string } | null;
 }
 
-type DayType = "training" | "rest";
-type ViewMode = "mesocycle" | "daily";
+interface ActivePlanSummary {
+  id: string;
+  name: string;
+  suggestedDay: SuggestedDay | null;
+}
+
+// ─── Today's plan card ────────────────────────────────────────────────────────
+
+function TodaysPlanCard({ plan }: { plan: ActivePlanSummary }) {
+  const day = plan.suggestedDay;
+  const isRest = !day || day.type === "rest";
+  const isTraining = !isRest;
+  const weekLabel = day ? `Week ${day.weekIndex + 1} · Day ${day.dayIndex + 1}` : null;
+
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
+
+  const todayStr = new Date().toLocaleDateString("en-CA");
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toLocaleDateString("en-CA");
+
+  const scheduledDateLabel = day?.scheduledDate
+    ? new Date(day.scheduledDate + "T00:00:00").toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+
+  const dayLabel = !day?.scheduledDate
+    ? "Active plan"
+    : day.scheduledDate === todayStr
+      ? "Today's plan"
+      : day.scheduledDate === tomorrowStr
+        ? "Tomorrow's plan"
+        : "Upcoming plan";
+
+  const hasWorkout = isTraining && !!day?.workoutTemplate;
+  const hasCardio = isTraining && !!day?.cardioTemplate;
+  const hasAny = hasWorkout || hasCardio;
+
+  return (
+    <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 space-y-2.5">
+      {/* Header */}
+      <div className="flex items-start gap-3 min-w-0">
+        <div className="h-8 w-8 rounded-lg flex items-center justify-center bg-primary/10 text-primary shrink-0">
+          {isRest ? <BedDouble className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide leading-none mb-0.5">
+            {dayLabel}
+          </p>
+          {weekLabel && (
+            <p className="text-sm text-muted-foreground">
+              {weekLabel}
+              {scheduledDateLabel && (
+                <span className="ml-2 text-xs opacity-70">· {scheduledDateLabel}</span>
+              )}
+            </p>
+          )}
+          {isRest && (
+            <p className="text-sm text-muted-foreground mt-0.5">Rest day — recover well</p>
+          )}
+        </div>
+        {hasAny && day && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            onClick={() => setSessionModalOpen(true)}
+          >
+            Start
+          </Button>
+        )}
+      </div>
+
+      {/* Activity labels */}
+      {hasWorkout && day && (
+        <div className="flex items-center gap-2 min-w-0 pt-1 border-t border-border/40">
+          <Dumbbell className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-sm font-medium truncate">{day.workoutTemplate!.name}</span>
+        </div>
+      )}
+      {hasCardio && day && (
+        <div className="flex items-center gap-2 min-w-0 pt-1 border-t border-border/40">
+          <Activity className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-sm font-medium truncate">{day.cardioTemplate!.name}</span>
+        </div>
+      )}
+
+      {day && sessionModalOpen && (
+        <DaySessionModal
+          open={sessionModalOpen}
+          onClose={() => setSessionModalOpen(false)}
+          planDayId={day.planDayId}
+          weekIndex={day.weekIndex}
+          dayIndex={day.dayIndex}
+          workoutTemplate={day.workoutTemplate}
+          cardioTemplate={day.cardioTemplate}
+        />
+      )}
+    </div>
+  );
+}
 
 // ─── Day type config ──────────────────────────────────────────────────────────
 
@@ -138,625 +243,6 @@ const DAY_TYPE_LABELS: Record<DayType, string> = {
   training: "Training",
   rest: "Rest",
 };
-
-const DAY_TYPE_COLORS: Record<DayType, string> = {
-  training: "bg-primary/10 text-primary border-primary/20",
-  rest: "bg-muted text-muted-foreground border-border",
-};
-
-// ─── Local edit-state types ───────────────────────────────────────────────────
-
-interface StrengthRow {
-  _key: string; // local stable key (uuid or existing id)
-  exerciseId: string;
-  exerciseName: string;
-  exerciseMuscle: string;
-  sets: number;
-  repMin: number;
-  repMax: number;
-  rir: number | null;
-  restSeconds: number | null;
-}
-
-interface CardioRow {
-  _key: string;
-  name: string;
-  zone: number | null;
-  kilometers: number | null;
-}
-
-function uid() {
-  return Math.random().toString(36).slice(2);
-}
-
-function templateToStrengthRows(t: Template): StrengthRow[] {
-  return t.templateExercises.map((te) => ({
-    _key: te.id,
-    exerciseId: te.exercise.id,
-    exerciseName: te.exercise.name,
-    exerciseMuscle: te.exercise.primaryMuscle,
-    sets: te.targetSets,
-    repMin: te.targetRepMin,
-    repMax: te.targetRepMax,
-    rir: te.rir ?? null,
-    restSeconds: te.restSeconds ?? null,
-  }));
-}
-
-function cardioTemplateToRows(t: CardioTemplate): CardioRow[] {
-  return t.cardioTemplateExercises.map((e) => ({
-    _key: e.id,
-    name: e.name,
-    zone: e.zone ?? null,
-    kilometers: e.kilometers != null ? parseFloat(e.kilometers) : null,
-  }));
-}
-
-// ─── Exercise Search Combobox ─────────────────────────────────────────────────
-
-function ExercisePicker({
-  onSelect,
-  onCancel,
-}: {
-  onSelect: (ex: Exercise) => void;
-  onCancel: () => void;
-}) {
-  const [search, setSearch] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
-
-  const { data: allExercises = [], isLoading } = useQuery<Exercise[]>({
-    queryKey: ["exercises"],
-    queryFn: () => api.get("/exercises"),
-    staleTime: Infinity,
-  });
-
-  const results = search
-    ? allExercises.filter((ex) => {
-        const q = search.toLowerCase();
-        return (
-          ex.name.toLowerCase().includes(q) ||
-          ex.primaryMuscle.toLowerCase().includes(q) ||
-          (MUSCLE_LABELS[ex.primaryMuscle] ?? "").toLowerCase().includes(q)
-        );
-      })
-    : allExercises;
-
-  return (
-    <div className="rounded-lg border border-border bg-card shadow-lg w-full max-w-xs">
-      <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-border">
-        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <input
-          ref={inputRef}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search exercises…"
-          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-        <button onClick={onCancel} className="p-0.5 rounded hover:bg-muted">
-          <X className="h-3.5 w-3.5 text-muted-foreground" />
-        </button>
-      </div>
-      <ul className="max-h-48 overflow-y-auto divide-y divide-border">
-        {isLoading && <li className="px-3 py-2 text-xs text-muted-foreground">Loading…</li>}
-        {!isLoading && results.length === 0 && (
-          <li className="px-3 py-2 text-xs text-muted-foreground">No results</li>
-        )}
-        {results.map((ex) => (
-          <li key={ex.id}>
-            <button
-              onClick={() => onSelect(ex)}
-              className="w-full text-left px-3 py-2 hover:bg-muted transition-colors"
-            >
-              <p className="text-sm font-medium">{ex.name}</p>
-              <p className="text-[11px] text-muted-foreground">{muscleLabel(ex.primaryMuscle)}</p>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// ─── Sortable Strength Row ────────────────────────────────────────────────────
-
-function SortableStrengthRow({
-  row,
-  isEditing,
-  disabled,
-  onUpdate,
-  onRemove,
-}: {
-  row: StrengthRow;
-  isEditing: boolean;
-  disabled?: boolean;
-  onUpdate: (patch: Partial<StrengthRow>) => void;
-  onRemove: () => void;
-}) {
-  const draggable = isEditing && !disabled;
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: row._key,
-    disabled: !draggable,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "grid grid-cols-[20px_1fr_56px_96px_56px_68px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 py-2 shadow-sm transition-all focus-within:border-primary/40 focus-within:ring-1 focus-within:ring-primary/20",
-        isDragging && "opacity-30",
-      )}
-    >
-      {/* Drag handle */}
-      <button
-        {...(draggable ? { ...attributes, ...listeners } : {})}
-        tabIndex={-1}
-        aria-label="Drag to reorder"
-        className={cn(
-          "flex items-center justify-center h-8 w-5 rounded text-muted-foreground/40 transition-colors touch-none",
-          draggable
-            ? "cursor-grab active:cursor-grabbing hover:text-muted-foreground"
-            : "cursor-default",
-        )}
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
-
-      {/* Exercise name */}
-      <div className="min-w-0 pr-2">
-        <p className="text-sm font-semibold truncate leading-tight mb-0.5">{row.exerciseName}</p>
-        <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">
-          {muscleLabel(row.exerciseMuscle)}
-        </p>
-      </div>
-
-      {/* Sets */}
-      <input
-        type="number"
-        min={1}
-        value={row.sets}
-        disabled={disabled}
-        onChange={(e) => onUpdate({ sets: Math.max(1, parseInt(e.target.value) || 1) })}
-        className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-      />
-
-      {/* Reps */}
-      <div className="flex items-center gap-1">
-        <input
-          type="number"
-          min={1}
-          value={row.repMin}
-          disabled={disabled}
-          onChange={(e) => onUpdate({ repMin: Math.max(1, parseInt(e.target.value) || 1) })}
-          className="w-full h-8 rounded-md border border-input bg-background p-0 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-        <span className="text-muted-foreground/60 text-xs font-medium shrink-0">–</span>
-        <input
-          type="number"
-          min={1}
-          value={row.repMax}
-          disabled={disabled}
-          onChange={(e) => onUpdate({ repMax: Math.max(1, parseInt(e.target.value) || 1) })}
-          className="w-full h-8 rounded-md border border-input bg-background p-0 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-      </div>
-
-      {/* RIR */}
-      <input
-        type="number"
-        min={0}
-        placeholder="—"
-        value={row.rir ?? ""}
-        disabled={disabled}
-        onChange={(e) =>
-          onUpdate({
-            rir: e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
-          })
-        }
-        className="w-full h-8 rounded-md border border-input bg-background px-2 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-      />
-
-      {/* Rest */}
-      <div className="relative">
-        <input
-          type="number"
-          min={0}
-          step={15}
-          placeholder="—"
-          value={row.restSeconds ?? ""}
-          disabled={disabled}
-          onChange={(e) =>
-            onUpdate({
-              restSeconds:
-                e.target.value === "" ? null : Math.max(0, parseInt(e.target.value) || 0),
-            })
-          }
-          className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 text-center text-sm font-medium tabular-nums transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-        {row.restSeconds != null && (
-          <span className="absolute right-1.5 bottom-1 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">
-            s
-          </span>
-        )}
-      </div>
-
-      {/* Delete */}
-      <button
-        onClick={onRemove}
-        disabled={disabled}
-        className="group flex items-center justify-center h-8 w-8 ml-auto rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-        aria-label="Remove exercise"
-      >
-        <Trash2 className="h-[14px] w-[14px] opacity-70 group-hover:opacity-100 transition-opacity" />
-      </button>
-    </div>
-  );
-}
-
-// ─── Strength Editor ──────────────────────────────────────────────────────────
-
-function StrengthEditor({
-  rows,
-  isEditing,
-  disabled,
-  onChange,
-}: {
-  rows: StrengthRow[];
-  isEditing: boolean;
-  disabled?: boolean;
-  onChange: (rows: StrengthRow[]) => void;
-}) {
-  const [showPicker, setShowPicker] = useState(false);
-  const [activeKey, setActiveKey] = useState<string | null>(null);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
-  );
-
-  const activeRow = activeKey != null ? (rows.find((r) => r._key === activeKey) ?? null) : null;
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveKey(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = rows.findIndex((r) => r._key === active.id);
-    const newIndex = rows.findIndex((r) => r._key === over.id);
-    if (oldIndex !== -1 && newIndex !== -1) {
-      onChange(arrayMove(rows, oldIndex, newIndex));
-    }
-  };
-
-  const addExercise = (ex: Exercise) => {
-    onChange([
-      ...rows,
-      {
-        _key: uid(),
-        exerciseId: ex.id,
-        exerciseName: ex.name,
-        exerciseMuscle: ex.primaryMuscle,
-        sets: 3,
-        repMin: 8,
-        repMax: 12,
-        rir: null,
-        restSeconds: null,
-      },
-    ]);
-    setShowPicker(false);
-  };
-
-  return (
-    <div className="space-y-3">
-      {rows.length > 0 && (
-        <div className="grid grid-cols-[20px_1fr_56px_96px_56px_68px_36px] gap-x-2 px-2 pb-1 bg-muted/30 rounded-t-md pt-2 border-b border-border">
-          {["", "Exercise", "Sets", "Reps", "RIR", "Rest", ""].map((h, i) => (
-            <span
-              key={i}
-              className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center first:text-left"
-            >
-              {h}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={(e) => setActiveKey(e.active.id as string)}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={rows.map((r) => r._key)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {rows.map((row) => (
-              <SortableStrengthRow
-                key={row._key}
-                row={row}
-                isEditing={isEditing}
-                disabled={disabled}
-                onUpdate={(patch) =>
-                  onChange(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))
-                }
-                onRemove={() => onChange(rows.filter((r) => r._key !== row._key))}
-              />
-            ))}
-          </div>
-        </SortableContext>
-
-        <DragOverlay dropAnimation={null}>
-          {activeRow && (
-            <div className="grid grid-cols-[20px_1fr_56px_96px_56px_68px_36px] gap-x-2 items-center rounded-lg border border-primary/40 bg-card px-2 py-2 shadow-lg opacity-95">
-              <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40" />
-              <div className="min-w-0 pr-2">
-                <p className="text-sm font-semibold truncate leading-tight mb-0.5">
-                  {activeRow.exerciseName}
-                </p>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground truncate">
-                  {muscleLabel(activeRow.exerciseMuscle)}
-                </p>
-              </div>
-              <div />
-              <div />
-              <div />
-              <div />
-              <div />
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
-
-      {showPicker ? (
-        <div className="pt-2 animate-in slide-in-from-top-2 fade-in duration-200">
-          <ExercisePicker onSelect={addExercise} onCancel={() => setShowPicker(false)} />
-        </div>
-      ) : (
-        <Button
-          variant="dashed"
-          size="sm"
-          disabled={disabled}
-          onClick={() => setShowPicker(true)}
-          className="w-full mt-2"
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
-          Add exercise
-        </Button>
-      )}
-    </div>
-  );
-}
-
-// ─── Sortable Cardio Row ──────────────────────────────────────────────────────
-
-function SortableCardioRow({
-  row,
-  isEditing,
-  disabled,
-  onUpdate,
-  onRemove,
-}: {
-  row: CardioRow;
-  isEditing: boolean;
-  disabled?: boolean;
-  onUpdate: (patch: Partial<CardioRow>) => void;
-  onRemove: () => void;
-}) {
-  const draggable = isEditing && !disabled;
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: row._key,
-    disabled: !draggable,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "grid grid-cols-[20px_1fr_56px_72px_36px] gap-x-2 items-center rounded-lg border border-border bg-card px-2 py-2 shadow-sm transition-all focus-within:border-amber-500/40 focus-within:ring-1 focus-within:ring-amber-500/20",
-        isDragging && "opacity-30",
-      )}
-    >
-      {/* Drag handle */}
-      <button
-        {...(draggable ? { ...attributes, ...listeners } : {})}
-        tabIndex={-1}
-        aria-label="Drag to reorder"
-        className={cn(
-          "flex items-center justify-center h-8 w-5 rounded text-muted-foreground/40 transition-colors touch-none",
-          draggable
-            ? "cursor-grab active:cursor-grabbing hover:text-muted-foreground"
-            : "cursor-default",
-        )}
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
-
-      {/* Name */}
-      <input
-        type="text"
-        value={row.name}
-        disabled={disabled}
-        onChange={(e) => onUpdate({ name: e.target.value })}
-        placeholder="e.g. Easy run"
-        className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
-      />
-
-      {/* Zone */}
-      <div className="relative">
-        {row.zone != null && (
-          <span className="absolute left-2 top-1.5 text-[10px] font-semibold text-amber-600/50 pointer-events-none">
-            Z
-          </span>
-        )}
-        <input
-          type="number"
-          min={1}
-          max={5}
-          placeholder="—"
-          value={row.zone ?? ""}
-          disabled={disabled}
-          onChange={(e) =>
-            onUpdate({
-              zone:
-                e.target.value === ""
-                  ? null
-                  : Math.min(5, Math.max(1, parseInt(e.target.value) || 1)),
-            })
-          }
-          className={cn(
-            "w-full h-8 rounded-md border border-input bg-background text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed",
-            row.zone != null ? "pl-4" : "",
-          )}
-        />
-      </div>
-
-      {/* km */}
-      <div className="relative">
-        <input
-          type="number"
-          min={0}
-          step={0.5}
-          placeholder="—"
-          value={row.kilometers ?? ""}
-          disabled={disabled}
-          onChange={(e) =>
-            onUpdate({
-              kilometers:
-                e.target.value === "" ? null : Math.max(0, parseFloat(e.target.value) || 0),
-            })
-          }
-          className="w-full h-8 rounded-md border border-input bg-background px-2 pb-0.5 pr-5 text-center text-sm font-medium tabular-nums transition-colors focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-        {row.kilometers != null && (
-          <span className="absolute right-1.5 bottom-1.5 text-[9px] font-semibold text-muted-foreground/50 pointer-events-none">
-            km
-          </span>
-        )}
-      </div>
-
-      {/* Delete */}
-      <button
-        onClick={onRemove}
-        disabled={disabled}
-        className="group flex items-center justify-center h-8 w-8 ml-auto rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-        aria-label="Remove activity"
-      >
-        <Trash2 className="h-[14px] w-[14px] opacity-70 group-hover:opacity-100 transition-opacity" />
-      </button>
-    </div>
-  );
-}
-
-// ─── Cardio Editor ────────────────────────────────────────────────────────────
-
-function CardioEditor({
-  rows,
-  isEditing,
-  disabled,
-  onChange,
-}: {
-  rows: CardioRow[];
-  isEditing: boolean;
-  disabled?: boolean;
-  onChange: (rows: CardioRow[]) => void;
-}) {
-  const [activeKey, setActiveKey] = useState<string | null>(null);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
-  );
-
-  const activeRow = activeKey != null ? (rows.find((r) => r._key === activeKey) ?? null) : null;
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    setActiveKey(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = rows.findIndex((r) => r._key === active.id);
-    const newIndex = rows.findIndex((r) => r._key === over.id);
-    if (oldIndex !== -1 && newIndex !== -1) {
-      onChange(arrayMove(rows, oldIndex, newIndex));
-    }
-  };
-
-  return (
-    <div className="space-y-3">
-      {rows.length > 0 && (
-        <div className="grid grid-cols-[20px_1fr_56px_72px_36px] gap-x-2 px-2 pb-1 bg-muted/30 rounded-t-md pt-2 border-b border-border">
-          {["", "Activity", "Zone", "km", ""].map((h, i) => (
-            <span
-              key={i}
-              className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center first:text-left"
-            >
-              {h}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragStart={(e) => setActiveKey(e.active.id as string)}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext items={rows.map((r) => r._key)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
-            {rows.map((row) => (
-              <SortableCardioRow
-                key={row._key}
-                row={row}
-                isEditing={isEditing}
-                disabled={disabled}
-                onUpdate={(patch) =>
-                  onChange(rows.map((r) => (r._key === row._key ? { ...r, ...patch } : r)))
-                }
-                onRemove={() => onChange(rows.filter((r) => r._key !== row._key))}
-              />
-            ))}
-          </div>
-        </SortableContext>
-
-        <DragOverlay dropAnimation={null}>
-          {activeRow && (
-            <div className="grid grid-cols-[20px_1fr_56px_72px_36px] gap-x-2 items-center rounded-lg border border-amber-500/40 bg-card px-2 py-2 shadow-lg opacity-95">
-              <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40" />
-              <p className="text-sm font-medium truncate">{activeRow.name || "—"}</p>
-              <div />
-              <div />
-              <div />
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
-
-      <Button
-        variant="dashed"
-        size="sm"
-        disabled={disabled}
-        onClick={() => onChange([...rows, { _key: uid(), name: "", zone: null, kilometers: null }])}
-        className="w-full mt-2"
-      >
-        <Plus className="h-3.5 w-3.5 mr-1.5" />
-        Add activity
-      </Button>
-    </div>
-  );
-}
 
 // ─── Schedule date helper ─────────────────────────────────────────────────────
 
@@ -936,6 +422,97 @@ function WeekMenu({
   );
 }
 
+// ─── Day Context Menu ─────────────────────────────────────────────────────────
+
+function DayMenu({
+  canEdit,
+  onEdit,
+  onClone,
+  onDelete,
+  canDelete,
+  isPending,
+}: {
+  canEdit: boolean;
+  onEdit: () => void;
+  onClone: () => void;
+  onDelete: () => void;
+  canDelete: boolean;
+  isPending?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, right: 0 });
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+    }
+    setOpen((v) => !v);
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={handleOpen}
+        disabled={isPending}
+        aria-label="Day options"
+        className="rounded p-0.5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
+      >
+        <MoreHorizontal className="h-3 w-3" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} aria-hidden />
+          <div
+            className="fixed z-50 rounded-xl border border-border bg-card shadow-xl p-1 min-w-[140px]"
+            style={{ top: pos.top, right: pos.right }}
+          >
+            {canEdit && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit();
+                  setOpen(false);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted transition-colors"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </button>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClone();
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted transition-colors"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Clone
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+                setOpen(false);
+              }}
+              disabled={!canDelete}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete day
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 // ─── Day Cell ─────────────────────────────────────────────────────────────────
 
 function DayCell({
@@ -947,10 +524,15 @@ function DayCell({
   isReordering = false,
   scheduledDate,
   status,
-  onNavigateToDay,
-  onCloneDay,
-  onDeleteDay,
+  weekIndex,
+  dayIndex,
+  planDayId,
+  planId,
   isOverlay = false,
+  onClone,
+  onDelete,
+  canDelete,
+  menuPending,
 }: {
   day: PlanDay;
   templates: Template[];
@@ -960,14 +542,19 @@ function DayCell({
   isReordering?: boolean;
   scheduledDate?: string | null;
   status?: { workout?: string; cardio?: string } | null;
-  onNavigateToDay?: () => void;
-  onCloneDay?: () => void;
-  onDeleteDay?: () => void;
+  weekIndex?: number;
+  dayIndex?: number;
+  planDayId?: string;
+  planId?: string;
   isOverlay?: boolean;
+  onClone?: () => void;
+  onDelete?: () => void;
+  canDelete?: boolean;
+  menuPending?: boolean;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const dotsRef = useRef<HTMLButtonElement>(null);
+  const navigate = useNavigate();
+  const [sessionModalOpen, setSessionModalOpen] = useState(false);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
 
   // A past day is any scheduled slot strictly before today (only relevant for active plans)
   const isPast = (() => {
@@ -976,6 +563,13 @@ function DayCell({
     today.setHours(0, 0, 0, 0);
     return new Date(scheduledDate + "T00:00:00") < today;
   })();
+
+  const workoutDone = status?.workout === "workout_completed";
+  const cardioDone = status?.cardio === "cardio_completed";
+  const workoutSkipped = status?.workout === "workout_skipped";
+  const cardioSkipped = status?.cardio === "cardio_skipped";
+  // A day is reviewable if at least one component has been acted on (done or skipped)
+  const isReviewable = isPast && (workoutDone || cardioDone || workoutSkipped || cardioSkipped);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: day.dayNumber,
@@ -1002,12 +596,20 @@ function DayCell({
       "Cardio")
     : null;
 
-  // All day types navigate into the day editor on click.
-  // We let dnd-kit handle the pointer — it fires onClick only when no drag occurred.
+  // Clicking a training day opens the review modal if done, or the session modal if pending.
   const handleClick = () => {
-    if (isDragging || isReordering || isPast) return;
-    onNavigateToDay?.();
+    if (isDragging || isReordering || day.type !== "training") return;
+    if (isReviewable) {
+      setReviewModalOpen(true);
+    } else if (hasAny && !isPast) {
+      setSessionModalOpen(true);
+    }
   };
+
+  const isClickable =
+    day.type === "training" && !isReordering && (isReviewable || (!isPast && hasAny));
+
+  const showMenu = !isLocked && !isReordering && !isOverlay && (onClone || onDelete);
 
   return (
     <div ref={setNodeRef} style={style} className={cn("relative", isDragging && "opacity-30")}>
@@ -1016,14 +618,19 @@ function DayCell({
         onClick={handleClick}
         className={cn(
           "w-full rounded-lg border text-left transition-colors flex flex-col p-1.5 h-[60px] overflow-hidden",
-          isDraggable && !isPast && "cursor-grab active:cursor-grabbing touch-none",
-          isPast && "cursor-default opacity-60",
+          isDraggable &&
+            !isPast &&
+            !isReviewable &&
+            "cursor-grab active:cursor-grabbing touch-none",
+          isPast && !isReviewable && "cursor-default opacity-60",
+          isReviewable && "cursor-pointer",
           hasAny
-            ? cn("border-primary/30 bg-primary/5", !isPast && "hover:bg-primary/10")
+            ? cn("border-primary/30 bg-primary/5", isClickable && "hover:bg-primary/10")
             : day.type === "rest"
               ? cn("border-dashed border-border bg-muted/30", !isPast && "hover:bg-muted/50")
               : cn("border-dashed border-border", !isPast && "hover:bg-muted/40"),
           isLocked && day.type !== "training" && "cursor-default opacity-70",
+          !isClickable && day.type === "training" && "cursor-default",
         )}
         aria-label={`Day ${day.dayNumber}`}
       >
@@ -1091,71 +698,54 @@ function DayCell({
 
         {isLocked && <Check className="h-3 w-3 text-emerald-500 absolute top-1.5 right-1.5" />}
       </button>
-
-      {!isLocked &&
-        !isReordering &&
-        !isOverlay &&
-        (onCloneDay || onDeleteDay) &&
-        day.type === "training" && (
-          <button
-            ref={dotsRef}
-            onClick={(e) => {
-              e.stopPropagation();
-              const rect = dotsRef.current?.getBoundingClientRect();
-              if (rect) {
-                setMenuPos({
-                  top: rect.bottom + window.scrollY + 4,
-                  left: rect.left + window.scrollX,
-                });
-              }
-              setMenuOpen((v) => !v);
-            }}
-            aria-label="Day options"
-            className="absolute top-0.5 right-0.5 rounded p-0.5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors z-10"
-          >
-            <MoreHorizontal className="h-3 w-3" />
-          </button>
-        )}
-
-      {/* Day options menu — rendered in a portal to escape overflow:hidden containers */}
-      {menuOpen &&
-        !isReordering &&
-        menuPos &&
-        createPortal(
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} aria-hidden />
-            <div
-              className="absolute z-50 rounded-xl border border-border bg-card shadow-xl p-1 min-w-[140px]"
-              style={{ top: menuPos.top, left: menuPos.left }}
-            >
-              {onCloneDay && (
-                <button
-                  onClick={() => {
-                    onCloneDay();
-                    setMenuOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted transition-colors"
-                >
-                  <Copy className="h-3 w-3" />
-                  Clone day
-                </button>
-              )}
-              {onDeleteDay && (
-                <button
-                  onClick={() => {
-                    onDeleteDay();
-                    setMenuOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs hover:bg-muted text-destructive transition-colors"
-                >
-                  <Trash2 className="h-3 w-3" />
-                  Delete day
-                </button>
-              )}
-            </div>
-          </>,
-          document.body,
-        )}
+      {showMenu && (
+        <div className="absolute top-0.5 right-0.5 z-10">
+          <DayMenu
+            canEdit={!isLocked && !isReviewable}
+            onEdit={() =>
+              navigate("/plan/day", {
+                state: {
+                  planId,
+                  microcycleId: day.planMicrocycleId,
+                  dayNumber: day.dayNumber,
+                  weekIndex: weekIndex ?? 0,
+                  dayIndex: dayIndex ?? 0,
+                },
+              })
+            }
+            onClone={onClone!}
+            onDelete={onDelete!}
+            canDelete={canDelete ?? false}
+            isPending={menuPending}
+          />
+        </div>
+      )}
+      {sessionModalOpen && planDayId != null && weekIndex != null && dayIndex != null && (
+        <DaySessionModal
+          open={sessionModalOpen}
+          onClose={() => setSessionModalOpen(false)}
+          planDayId={planDayId}
+          weekIndex={weekIndex}
+          dayIndex={dayIndex}
+          workoutTemplate={hasStrength ? { id: day.workoutTemplateId!, name: strengthName! } : null}
+          cardioTemplate={hasCardio ? { id: day.cardioTemplateId!, name: cardioName! } : null}
+          workoutDone={workoutDone || workoutSkipped}
+          cardioDone={cardioDone || cardioSkipped}
+        />
+      )}
+      {reviewModalOpen && planDayId != null && weekIndex != null && dayIndex != null && (
+        <DayReviewModal
+          open={reviewModalOpen}
+          onClose={() => setReviewModalOpen(false)}
+          planDayId={planDayId}
+          weekIndex={weekIndex}
+          dayIndex={dayIndex}
+          workoutStatus={status?.workout}
+          cardioStatus={status?.cardio}
+          workoutTemplateName={strengthName}
+          cardioTemplateName={cardioName}
+        />
+      )}
     </div>
   );
 }
@@ -1166,12 +756,10 @@ function PlanView({
   plan,
   templates,
   cardioTemplates,
-  onNavigateToDay,
 }: {
   plan: TrainingPlan;
   templates: Template[];
   cardioTemplates: CardioTemplate[];
-  onNavigateToDay: (week: number, day: number) => void;
 }) {
   const queryClient = useQueryClient();
   const [editingMcId, setEditingMcId] = useState<string | null>(null);
@@ -1227,14 +815,6 @@ function PlanView({
     },
   });
 
-  const deleteDayMutation = useMutation({
-    mutationFn: (dayNumber: number) => api.delete(`/plans/${plan.id}/days/${dayNumber}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
-      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
-    },
-  });
-
   const reorderDaysMutation = useMutation({
     mutationFn: (order: number[]) => api.patch(`/plans/${plan.id}/days/reorder`, { order }),
     onSuccess: async () => {
@@ -1260,6 +840,16 @@ function PlanView({
   const cloneDayMutation = useMutation({
     mutationFn: ({ mcId, dayNum }: { mcId: string; dayNum: number }) =>
       api.post(`/plans/${plan.id}/microcycles/${mcId}/days/${dayNum}/clone`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+      queryClient.invalidateQueries({ queryKey: ["templates"] });
+      queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
+    },
+  });
+
+  const deleteDayMutation = useMutation({
+    mutationFn: (dayNumber: number) => api.delete(`/plans/${plan.id}/days/${dayNumber}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
       queryClient.invalidateQueries({ queryKey: ["activePlan"] });
@@ -1510,17 +1100,16 @@ function PlanView({
                                 ? (plan.dayLogs?.[`${mc.position - 1}:${d - 1}`] ?? null)
                                 : null
                             }
-                            onNavigateToDay={() => onNavigateToDay(mc.position, d)}
-                            onCloneDay={
-                              !isLocked
-                                ? () => cloneDayMutation.mutate({ mcId: mc.id, dayNum: d })
-                                : undefined
+                            weekIndex={mc.position - 1}
+                            dayIndex={d - 1}
+                            planDayId={day.id}
+                            planId={plan.id}
+                            onClone={() =>
+                              cloneDayMutation.mutate({ mcId: mc.id, dayNum: day.dayNumber })
                             }
-                            onDeleteDay={
-                              !isLocked && localDayOrder.length > 1
-                                ? () => deleteDayMutation.mutate(d)
-                                : undefined
-                            }
+                            onDelete={() => deleteDayMutation.mutate(day.dayNumber)}
+                            canDelete={plan.microcycleLength > 1}
+                            menuPending={cloneDayMutation.isPending || deleteDayMutation.isPending}
                           />
                         </div>
                       );
@@ -1583,762 +1172,6 @@ function PlanView({
         )}
       </DragOverlay>
     </DndContext>
-  );
-}
-
-// ─── Read-Only Day Views ──────────────────────────────────────────────────────
-
-function StrengthReadView({ rows }: { rows: StrengthRow[] }) {
-  if (rows.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground italic bg-muted/30 p-4 rounded-lg border border-dashed border-border text-center">
-        No strength exercises assigned.
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      {rows.map((r, i) => (
-        <div
-          key={r._key}
-          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 shadow-sm transition-all hover:border-primary/20"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-              {i + 1}
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{r.exerciseName}</p>
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wider truncate">
-                {muscleLabel(r.exerciseMuscle)}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-y-1 gap-x-2 text-sm sm:justify-end">
-            <div className="flex items-baseline gap-1 bg-muted/50 px-2 py-1 rounded-sm">
-              <span className="font-semibold tabular-nums text-foreground">{r.sets}</span>
-              <span className="text-xs text-muted-foreground">sets</span>
-            </div>
-            <span className="text-muted-foreground/30 px-1">×</span>
-            <div className="flex items-baseline gap-1 bg-muted/50 px-2 py-1 rounded-sm">
-              <span className="font-semibold tabular-nums text-foreground">
-                {r.repMin === r.repMax ? r.repMin : `${r.repMin}–${r.repMax}`}
-              </span>
-              <span className="text-xs text-muted-foreground">reps</span>
-            </div>
-            {r.rir != null && (
-              <div className="flex items-baseline gap-1 bg-primary/5 border border-primary/10 px-2 py-1 rounded-sm">
-                <span className="text-[10px] font-bold text-primary/70 uppercase">RIR</span>
-                <span className="font-semibold tabular-nums text-primary">{r.rir}</span>
-              </div>
-            )}
-            {r.restSeconds != null && (
-              <>
-                <div className="h-3 w-[1px] bg-border mx-1 hidden sm:block"></div>
-                <div className="flex items-center gap-1 text-muted-foreground bg-muted/30 px-2 py-1 rounded-sm">
-                  <span className="font-medium tabular-nums text-foreground">{r.restSeconds}s</span>
-                  <span className="text-[10px] uppercase">rest</span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CardioReadView({ rows }: { rows: CardioRow[] }) {
-  if (rows.length === 0) {
-    return (
-      <p className="text-xs text-muted-foreground italic bg-muted/30 p-4 rounded-lg border border-dashed border-border text-center">
-        No cardio activities assigned.
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      {rows.map((r, i) => (
-        <div
-          key={r._key}
-          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 shadow-sm transition-all hover:border-amber-500/20"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-xs font-semibold text-amber-600 dark:text-amber-400">
-              {i + 1}
-            </div>
-            <p className="text-sm font-medium truncate">{r.name}</p>
-          </div>
-          <div className="flex items-center gap-3 text-sm sm:justify-end">
-            {r.kilometers != null && (
-              <div className="flex items-baseline gap-1 bg-amber-500/5 px-2 py-1 rounded-sm text-amber-900 dark:text-amber-300 border border-amber-500/10">
-                <span className="font-semibold tabular-nums">{r.kilometers}</span>
-                <span className="text-xs opacity-70">km</span>
-              </div>
-            )}
-            {r.zone != null && (
-              <div className="flex h-6 items-center rounded-md bg-amber-500/10 px-2 text-xs font-medium text-amber-700 dark:text-amber-500 border border-amber-500/20">
-                Zone {r.zone}
-              </div>
-            )}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Day View ─────────────────────────────────────────────────────────────────
-
-function DayView({
-  plan,
-  templates,
-  cardioTemplates,
-  initialWeek,
-  initialDay,
-}: {
-  plan: TrainingPlan;
-  templates: Template[];
-  cardioTemplates: CardioTemplate[];
-  initialWeek?: number;
-  initialDay?: number;
-}) {
-  const queryClient = useQueryClient();
-
-  const [selectedWeek, setSelectedWeek] = useState(
-    initialWeek ?? plan.microcycles[0]?.position ?? 1,
-  );
-  const [selectedDay, setSelectedDay] = useState(initialDay ?? 1);
-
-  const mc = plan.microcycles.find((m) => m.position === selectedWeek) ?? plan.microcycles[0];
-
-  const dayData: PlanDay = mc?.days.find((d) => d.dayNumber === selectedDay) ?? {
-    id: `stub-${mc?.id}-${selectedDay}`,
-    planMicrocycleId: mc?.id ?? "",
-    dayNumber: selectedDay,
-    type: "training",
-    workoutTemplateId: null,
-    workoutTemplate: null,
-    cardioTemplateId: null,
-    cardioTemplate: null,
-    notes: null,
-  };
-
-  // Use the template embedded in the plan day (returned by GET /plans/:id).
-  // Falling back to the templates list avoids a stale-cache race where the
-  // ["templates"] query hasn't refreshed yet after a save.
-  const strengthTemplate: Template | null =
-    dayData.workoutTemplate ??
-    (dayData.workoutTemplateId
-      ? (templates.find((t) => t.id === dayData.workoutTemplateId) ?? null)
-      : null);
-
-  const cardioTemplate: CardioTemplate | null =
-    dayData.cardioTemplate ??
-    (dayData.cardioTemplateId
-      ? (cardioTemplates.find((t) => t.id === dayData.cardioTemplateId) ?? null)
-      : null);
-
-  const isLocked = plan.status === "completed";
-
-  // Past days (active plan only) are read-only — the slot has already passed
-  const isPast = (() => {
-    if (plan.status !== "active") return false;
-    const slotDate = getPlanSlotDate(plan, selectedWeek - 1, selectedDay - 1);
-    if (!slotDate) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return new Date(slotDate + "T00:00:00") < today;
-  })();
-
-  // ── Local editable state ──────────────────────────────────────────────────
-  const [isEditing, setIsEditing] = useState(false);
-  const [dayType, setDayType] = useState<DayType>(dayData.type);
-  const [strengthRows, setStrengthRows] = useState<StrengthRow[]>(
-    strengthTemplate ? templateToStrengthRows(strengthTemplate) : [],
-  );
-  const [cardioRows, setCardioRows] = useState<CardioRow[]>(
-    cardioTemplate ? cardioTemplateToRows(cardioTemplate) : [],
-  );
-  const [strengthName, setStrengthName] = useState(
-    strengthTemplate?.name ?? `W${selectedWeek} D${selectedDay} Strength`,
-  );
-  const [cardioName, setCardioName] = useState(
-    cardioTemplate?.name ?? `W${selectedWeek} D${selectedDay} Cardio`,
-  );
-  const [isDirty, setIsDirty] = useState(false);
-
-  // Re-init when the selected day changes
-  useEffect(() => {
-    setIsEditing(false);
-    setDayType(dayData.type);
-    setStrengthRows(strengthTemplate ? templateToStrengthRows(strengthTemplate) : []);
-    setCardioRows(cardioTemplate ? cardioTemplateToRows(cardioTemplate) : []);
-    setStrengthName(strengthTemplate?.name ?? `W${selectedWeek} D${selectedDay} Strength`);
-    setCardioName(cardioTemplate?.name ?? `W${selectedWeek} D${selectedDay} Cardio`);
-    setIsDirty(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWeek, selectedDay, plan]);
-
-  const markDirty = () => setIsDirty(true);
-
-  const cancelEdit = () => {
-    setIsEditing(false);
-    setDayType(dayData.type);
-    setStrengthRows(strengthTemplate ? templateToStrengthRows(strengthTemplate) : []);
-    setCardioRows(cardioTemplate ? cardioTemplateToRows(cardioTemplate) : []);
-    setIsDirty(false);
-  };
-
-  // ── Save logic ─────────────────────────────────────────────────────────────
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      // 1. If type changed to rest, clear templates and save day
-      if (dayType === "rest") {
-        await api.put(`/plans/${plan.id}/microcycles/${mc?.id}/days/${dayData.dayNumber}`, {
-          type: "rest",
-          workoutTemplateId: null,
-          cardioTemplateId: null,
-          notes: dayData.notes,
-        });
-        return;
-      }
-
-      // 2. Save strength template (upsert or delete)
-      let workoutTemplateId = dayData.workoutTemplateId;
-
-      if (strengthRows.length > 0) {
-        const strengthPayload = {
-          name: strengthName.trim() || `W${selectedWeek} D${selectedDay} Strength`,
-          description: null,
-          exercises: strengthRows.map((r, i) => ({
-            exerciseId: r.exerciseId,
-            order: i + 1,
-            targetSets: r.sets,
-            targetRepMin: r.repMin,
-            targetRepMax: r.repMax,
-            rir: r.rir ?? null,
-            restSeconds: r.restSeconds ?? null,
-          })),
-        };
-        try {
-          if (workoutTemplateId) {
-            await api.put(`/templates/${workoutTemplateId}`, strengthPayload);
-          } else {
-            const created: Template = await api.post("/templates", strengthPayload);
-            workoutTemplateId = created.id;
-          }
-        } catch {
-          throw new Error("Failed to save strength workout. Please try again.");
-        }
-      } else {
-        // All exercises removed — delete the orphaned template
-        if (workoutTemplateId) {
-          try {
-            await api.delete(`/templates/${workoutTemplateId}`);
-          } catch {
-            // Non-fatal: template may already be gone; proceed
-          }
-        }
-        workoutTemplateId = null;
-      }
-
-      // 3. Save cardio template (upsert or delete)
-      let cardioTemplateId = dayData.cardioTemplateId;
-
-      if (cardioRows.length > 0) {
-        const cardioPayload = {
-          name: cardioName.trim() || `W${selectedWeek} D${selectedDay} Cardio`,
-          description: null,
-          exercises: cardioRows.map((r, i) => ({
-            name: r.name || "Cardio",
-            zone: r.zone ?? null,
-            kilometers: r.kilometers ?? null,
-            order: i + 1,
-          })),
-        };
-        try {
-          if (cardioTemplateId) {
-            await api.put(`/cardio-templates/${cardioTemplateId}`, cardioPayload);
-          } else {
-            const created: CardioTemplate = await api.post("/cardio-templates", cardioPayload);
-            cardioTemplateId = created.id;
-          }
-        } catch {
-          throw new Error("Failed to save cardio workout. Please try again.");
-        }
-      } else {
-        // All activities removed — delete the orphaned template
-        if (cardioTemplateId) {
-          try {
-            await api.delete(`/cardio-templates/${cardioTemplateId}`);
-          } catch {
-            // Non-fatal: template may already be gone; proceed
-          }
-        }
-        cardioTemplateId = null;
-      }
-
-      // 4. Link templates to the plan day
-      try {
-        await api.put(`/plans/${plan.id}/microcycles/${mc?.id}/days/${dayData.dayNumber}`, {
-          type: "training",
-          workoutTemplateId: workoutTemplateId ?? null,
-          cardioTemplateId: cardioTemplateId ?? null,
-          notes: dayData.notes,
-        });
-      } catch {
-        throw new Error("Workout saved but failed to link to the plan day. Please try again.");
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
-      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
-      queryClient.invalidateQueries({ queryKey: ["templates"] });
-      queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
-      setIsDirty(false);
-      setIsEditing(false);
-    },
-    onError: () => {
-      // Refresh to sync any partial state that was committed before the failure
-      queryClient.invalidateQueries({ queryKey: ["plan", plan.id] });
-      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
-      queryClient.invalidateQueries({ queryKey: ["templates"] });
-      queryClient.invalidateQueries({ queryKey: ["cardio-templates"] });
-    },
-  });
-
-  return (
-    <div className="space-y-4">
-      {/* Week picker */}
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Week</p>
-        <div className="flex flex-wrap gap-1.5">
-          {plan.microcycles.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => {
-                setSelectedWeek(m.position);
-                // Preserve the current day if it exists in the new week; else reset to 1
-                if (selectedDay > plan.microcycleLength) setSelectedDay(1);
-              }}
-              className={cn(
-                "rounded-md px-3 py-1.5 text-sm font-medium border transition-colors",
-                selectedWeek === m.position
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              W{m.position}
-              {m.name && (
-                <span className="hidden sm:inline ml-1 text-xs opacity-70">· {m.name}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Day picker */}
-      <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Day</p>
-        <div className="flex flex-wrap gap-1.5">
-          {Array.from({ length: plan.microcycleLength }, (_, i) => i + 1).map((d) => {
-            const day = mc?.days.find((pd) => pd.dayNumber === d);
-            const isRest = day?.type === "rest";
-            return (
-              <button
-                key={d}
-                onClick={() => setSelectedDay(d)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium border transition-colors",
-                  selectedDay === d
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : isRest
-                      ? "border-dashed border-border text-muted-foreground/60 hover:bg-muted"
-                      : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                D{d}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Day detail panel */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold">
-              Week {selectedWeek} · Day {selectedDay}
-            </span>
-            {plan.status === "active" &&
-              (() => {
-                const d = getPlanSlotDate(plan, selectedWeek - 1, selectedDay - 1);
-                return d ? (
-                  <span className="text-xs text-muted-foreground">{formatSlotDate(d)}</span>
-                ) : null;
-              })()}
-            <span
-              className={cn(
-                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border",
-                DAY_TYPE_COLORS[isEditing ? dayType : dayData.type],
-              )}
-            >
-              {DAY_TYPE_LABELS[isEditing ? dayType : dayData.type]}
-            </span>
-          </div>
-
-          {!isLocked &&
-            !isPast &&
-            (isEditing ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={cancelEdit}
-                disabled={saveMutation.isPending}
-              >
-                <X className="h-3.5 w-3.5 mr-1" />
-                Cancel
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
-                <Pencil className="h-3.5 w-3.5 mr-1" />
-                Edit
-              </Button>
-            ))}
-        </div>
-
-        {/* Day type toggle — always visible while editing */}
-        {isEditing && (
-          <div className="flex gap-1">
-            {(["training", "rest"] as DayType[]).map((t) => (
-              <button
-                key={t}
-                onClick={() => {
-                  setDayType(t);
-                  markDirty();
-                }}
-                className={cn(
-                  "rounded-md px-2.5 py-1 text-xs font-medium border transition-colors",
-                  dayType === t
-                    ? DAY_TYPE_COLORS[t] + " ring-1 ring-inset ring-current"
-                    : "border-border text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {DAY_TYPE_LABELS[t]}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Content */}
-        {(isEditing ? dayType : dayData.type) === "rest" ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 text-center">
-            <p className="text-sm text-muted-foreground">Rest day — no workout</p>
-          </div>
-        ) : (
-          <div className="space-y-5">
-            {/* Strength box */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Dumbbell className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-semibold text-primary uppercase tracking-wide">
-                  Strength
-                </span>
-                {isEditing ? (
-                  <input
-                    value={strengthName}
-                    onChange={(e) => {
-                      setStrengthName(e.target.value);
-                      markDirty();
-                    }}
-                    disabled={saveMutation.isPending}
-                    placeholder="Workout name"
-                    className="ml-1 h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-                  />
-                ) : (
-                  strengthName && (
-                    <span className="text-xs text-muted-foreground">— {strengthName}</span>
-                  )
-                )}
-              </div>
-              {!isEditing ? (
-                <StrengthReadView rows={strengthRows} />
-              ) : (
-                <StrengthEditor
-                  rows={strengthRows}
-                  isEditing={isEditing}
-                  disabled={saveMutation.isPending}
-                  onChange={(r) => {
-                    setStrengthRows(r);
-                    markDirty();
-                  }}
-                />
-              )}
-            </div>
-
-            {/* Cardio box */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5">
-                <Activity className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
-                  Cardio
-                </span>
-                {isEditing ? (
-                  <input
-                    value={cardioName}
-                    onChange={(e) => {
-                      setCardioName(e.target.value);
-                      markDirty();
-                    }}
-                    disabled={saveMutation.isPending}
-                    placeholder="Cardio name"
-                    className="ml-1 h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-                  />
-                ) : (
-                  cardioName && (
-                    <span className="text-xs text-muted-foreground">— {cardioName}</span>
-                  )
-                )}
-              </div>
-              {!isEditing ? (
-                <CardioReadView rows={cardioRows} />
-              ) : (
-                <CardioEditor
-                  rows={cardioRows}
-                  isEditing={isEditing}
-                  disabled={saveMutation.isPending}
-                  onChange={(r) => {
-                    setCardioRows(r);
-                    markDirty();
-                  }}
-                />
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Save bar — only visible while editing */}
-        {isEditing && (
-          <div className="flex items-center justify-between gap-2 pt-1 border-t border-border">
-            {saveMutation.isError && (
-              <p className="text-xs text-destructive">
-                {saveMutation.error instanceof Error
-                  ? saveMutation.error.message
-                  : "Save failed — try again."}
-              </p>
-            )}
-            {!saveMutation.isError && (
-              <span className="text-xs text-muted-foreground">
-                {isDirty ? "Unsaved changes" : saveMutation.isSuccess ? "Saved" : ""}
-              </span>
-            )}
-            <Button
-              size="sm"
-              loading={saveMutation.isPending}
-              disabled={!isDirty}
-              onClick={() => saveMutation.mutate()}
-            >
-              <Save className="h-3.5 w-3.5 mr-1" />
-              Save
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Plan Adherence Card ─────────────────────────────────────────────────────
-
-interface AdherenceWeek {
-  weekIndex: number;
-  planned: number;
-  completed: number;
-  skipped: number;
-  pending: number;
-}
-
-interface AdherenceComponent {
-  totalPlanned: number;
-  totalCompleted: number;
-  totalSkipped: number;
-  totalPending: number;
-  weeks: AdherenceWeek[];
-}
-
-interface Adherence {
-  completionRate: number;
-  totalPlanned: number;
-  totalCompleted: number;
-  totalSkipped: number;
-  totalPending: number;
-  currentStreak: number;
-  longestStreak: number;
-  totalVolume: { sets: number; reps: number; weightKg: number };
-  weeks: AdherenceWeek[];
-  strength: AdherenceComponent;
-  cardio: AdherenceComponent;
-}
-
-function PlanAdherenceCard({ adherence }: { adherence: Adherence }) {
-  const [tab, setTab] = useState<"all" | "strength" | "cardio">("all");
-
-  const pct = Math.round(adherence.completionRate * 100);
-
-  // Determine which dataset to show in the per-week table
-  const component =
-    tab === "strength" ? adherence.strength : tab === "cardio" ? adherence.cardio : null;
-  const weeksToShow = component ? component.weeks : adherence.weeks.filter((w) => w.planned > 0);
-  const hasData = weeksToShow.some((w) => w.planned > 0);
-  const totals = component
-    ? {
-        planned: component.totalPlanned,
-        completed: component.totalCompleted,
-        skipped: component.totalSkipped,
-        missed: component.totalPending,
-      }
-    : {
-        planned: adherence.totalPlanned,
-        completed: adherence.totalCompleted,
-        skipped: adherence.totalSkipped,
-        missed: adherence.totalPending,
-      };
-
-  return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-      <div className="flex items-center gap-2">
-        <TrendingUp className="h-4 w-4 text-primary" />
-        <h3 className="font-semibold text-sm">Plan Adherence</h3>
-      </div>
-
-      {/* Tab switcher */}
-      <div
-        className="inline-flex w-full rounded-lg border border-border bg-muted p-0.5 gap-0.5"
-        role="tablist"
-        aria-label="Adherence filter"
-      >
-        {(
-          [
-            { key: "all", label: "All", icon: <Layers className="h-3.5 w-3.5" /> },
-            { key: "strength", label: "Strength", icon: <Dumbbell className="h-3.5 w-3.5" /> },
-            { key: "cardio", label: "Cardio", icon: <Activity className="h-3.5 w-3.5" /> },
-          ] as const
-        ).map(({ key, label, icon }) => (
-          <button
-            key={key}
-            role="tab"
-            aria-selected={tab === key}
-            onClick={() => setTab(key)}
-            className={cn(
-              "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-              tab === key
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {icon}
-            <span>{label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Key stats — only on All tab */}
-      {tab === "all" && (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-lg bg-muted/50 p-3 text-center">
-              <p className="text-2xl font-bold tabular-nums">{pct}%</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Completion</p>
-            </div>
-            <div className="rounded-lg bg-muted/50 p-3 text-center">
-              <div className="flex items-center justify-center gap-1">
-                <Flame className="h-4 w-4 text-orange-500" />
-                <p className="text-2xl font-bold tabular-nums">{adherence.currentStreak}</p>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">Current streak</p>
-            </div>
-            <div className="rounded-lg bg-muted/50 p-3 text-center">
-              <p className="text-2xl font-bold tabular-nums">{adherence.longestStreak}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Longest streak</p>
-            </div>
-            <div className="rounded-lg bg-muted/50 p-3 text-center">
-              <p className="text-2xl font-bold tabular-nums">{adherence.totalVolume.sets}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Total sets</p>
-            </div>
-          </div>
-
-          {adherence.totalVolume.sets > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Weight className="h-3.5 w-3.5" />
-              <span>
-                {adherence.totalVolume.reps.toLocaleString()} reps ·{" "}
-                {adherence.totalVolume.weightKg.toLocaleString()} kg total volume
-              </span>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Per-week breakdown */}
-      {hasData ? (
-        <div className="space-y-1.5">
-          <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
-            <span>Wk</span>
-            <span className="text-center">Planned</span>
-            <span className="text-center text-emerald-600 dark:text-emerald-400">Done</span>
-            <span className="text-center text-amber-600 dark:text-amber-400">Skip</span>
-            <span className="text-center text-destructive/70">Pending</span>
-          </div>
-          {weeksToShow.map((w) => (
-            <div
-              key={w.weekIndex}
-              className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 items-center rounded-md bg-muted/30 px-2 py-1.5 text-sm"
-            >
-              <span className="text-xs font-semibold text-muted-foreground w-10">
-                W{w.weekIndex + 1}
-              </span>
-              <span className="text-center tabular-nums">{w.planned}</span>
-              <span className="text-center tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">
-                {w.completed}
-              </span>
-              <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
-                {w.skipped}
-              </span>
-              <span className="text-center tabular-nums text-destructive/70">{w.pending}</span>
-            </div>
-          ))}
-
-          {/* Totals summary */}
-          {totals.planned > 0 && (
-            <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr] gap-x-2 items-center rounded-md border border-border/60 px-2 py-1.5 text-sm font-semibold mt-1">
-              <span className="text-xs font-semibold text-muted-foreground w-10">Total</span>
-              <span className="text-center tabular-nums">{totals.planned}</span>
-              <span className="text-center tabular-nums text-emerald-600 dark:text-emerald-400">
-                {totals.completed}
-              </span>
-              <span className="text-center tabular-nums text-amber-600 dark:text-amber-400">
-                {totals.skipped}
-              </span>
-              <span className="text-center tabular-nums text-destructive/70">
-                {totals.missed}
-              </span>{" "}
-            </div>
-          )}
-        </div>
-      ) : (
-        <p className="text-xs text-muted-foreground text-center py-2">
-          {tab === "all"
-            ? "No data yet — complete your first planned workout to see stats."
-            : `No ${tab} data yet.`}
-        </p>
-      )}
-    </div>
   );
 }
 
@@ -2464,10 +1297,8 @@ function PlanStatusBanner({ plan }: { plan: TrainingPlan }) {
 export function PlanEditorPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [view, setView] = useState<ViewMode>("mesocycle");
-  const [dayViewWeek, setDayViewWeek] = useState<number | undefined>();
-  const [dayViewDay, setDayViewDay] = useState<number | undefined>();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [completePlanModalOpen, setCompletePlanModalOpen] = useState(false);
   const [editingPlanName, setEditingPlanName] = useState(false);
   const [planNameDraft, setPlanNameDraft] = useState("");
 
@@ -2491,18 +1322,11 @@ export function PlanEditorPage() {
 
   const isLoading = isMetaLoading || (!!id && isPlanLoading);
 
-  const { data: adherence, isLoading: isAdherenceLoading } = useQuery<Adherence | null>({
-    queryKey: ["planAdherence", id],
-    queryFn: () => api.get(`/plans/${id}/adherence`),
-    enabled: !!id && plan?.status === "active",
-    staleTime: 60_000,
-  });
-
   const deletePlanMutation = useMutation({
     mutationFn: () => api.delete(`/plans/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plans"] });
-      navigate("/planner", { replace: true });
+      navigate("/plan", { replace: true });
     },
   });
 
@@ -2511,6 +1335,16 @@ export function PlanEditorPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plan", id] });
       setEditingPlanName(false);
+    },
+  });
+
+  const completePlanMutation = useMutation({
+    mutationFn: () => api.post("/plans/active/complete", {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
+      queryClient.invalidateQueries({ queryKey: ["plan", id] });
+      queryClient.invalidateQueries({ queryKey: ["activePlan"] });
+      setCompletePlanModalOpen(false);
     },
   });
 
@@ -2524,6 +1358,12 @@ export function PlanEditorPage() {
     queryFn: () => api.get("/cardio-templates"),
   });
 
+  const { data: activePlanSummary } = useQuery<ActivePlanSummary | null>({
+    queryKey: ["activePlan"],
+    queryFn: () => api.get("/plans/active"),
+    enabled: plan?.status === "active",
+  });
+
   if (isError) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
@@ -2535,7 +1375,7 @@ export function PlanEditorPage() {
     );
   }
 
-  if (isLoading || isAdherenceLoading) {
+  if (isLoading) {
     return (
       <div className="space-y-5">
         {/* Header skeleton */}
@@ -2545,11 +1385,6 @@ export function PlanEditorPage() {
             <Skeleton className="h-4 w-32" />
           </div>
           <Skeleton className="h-8 w-20 rounded-md shrink-0" />
-        </div>
-        {/* Tab bar skeleton */}
-        <div className="flex gap-2">
-          <Skeleton className="h-9 w-20 rounded-md" />
-          <Skeleton className="h-9 w-20 rounded-md" />
         </div>
         {/* Content skeleton */}
         <div className="space-y-3">
@@ -2565,17 +1400,6 @@ export function PlanEditorPage() {
   if (!planMeta || !plan) {
     return <PlannerPage />;
   }
-
-  const goToDayView = (week: number, day: number) => {
-    setDayViewWeek(week);
-    setDayViewDay(day);
-    setView("daily");
-  };
-
-  const views: { key: ViewMode; label: string; icon: React.ReactNode }[] = [
-    { key: "mesocycle", label: "Plan", icon: <Layers className="h-4 w-4" /> },
-    { key: "daily", label: "Day", icon: <LayoutGrid className="h-4 w-4" /> },
-  ];
 
   return (
     <>
@@ -2648,6 +1472,16 @@ export function PlanEditorPage() {
               {plan.microcycleLength} days/week
             </p>
           </div>
+          {plan.status === "active" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCompletePlanModalOpen(true)}
+              className="shrink-0"
+            >
+              Complete Plan
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -2659,57 +1493,47 @@ export function PlanEditorPage() {
           </Button>
         </div>
 
+        {/* Today's plan */}
+        {plan.status === "active" && activePlanSummary && (
+          <TodaysPlanCard plan={activePlanSummary} />
+        )}
+
         {/* Status banner */}
         <PlanStatusBanner plan={plan} />
 
-        {/* Adherence metrics — active plans only */}
-        {plan.status === "active" && adherence && <PlanAdherenceCard adherence={adherence} />}
-
-        {/* View switcher */}
-        <div
-          className="inline-flex rounded-lg border border-border bg-muted p-0.5 gap-0.5"
-          role="tablist"
-          aria-label="Plan view"
-        >
-          {views.map(({ key, label, icon }) => (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={view === key}
-              onClick={() => setView(key)}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                view === key
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {icon}
-              <span className="hidden sm:inline">{label}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* View content */}
-        {view === "mesocycle" && (
-          <PlanView
-            plan={plan}
-            templates={templates}
-            cardioTemplates={cardioTemplates}
-            onNavigateToDay={goToDayView}
-          />
-        )}
-        {view === "daily" && (
-          <DayView
-            key={`${dayViewWeek}-${dayViewDay}`}
-            plan={plan}
-            templates={templates}
-            cardioTemplates={cardioTemplates}
-            initialWeek={dayViewWeek}
-            initialDay={dayViewDay}
-          />
-        )}
+        {/* Plan grid */}
+        <PlanView plan={plan} templates={templates} cardioTemplates={cardioTemplates} />
       </div>
+
+      <Modal
+        open={completePlanModalOpen}
+        onClose={() => setCompletePlanModalOpen(false)}
+        title="Complete training plan"
+      >
+        <p className="text-sm text-muted-foreground mb-2">
+          This will skip all remaining unfinished sessions and mark this plan as completed.
+          In-progress workouts will be cancelled.
+        </p>
+        <p className="text-sm text-muted-foreground mb-6">This action cannot be undone.</p>
+        {completePlanMutation.isError && (
+          <p className="text-xs text-destructive mb-4">
+            {completePlanMutation.error instanceof Error
+              ? completePlanMutation.error.message
+              : "Failed to complete plan. Please try again."}
+          </p>
+        )}
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={() => setCompletePlanModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => completePlanMutation.mutate()}
+            loading={completePlanMutation.isPending}
+          >
+            Complete plan
+          </Button>
+        </div>
+      </Modal>
 
       <Modal
         open={deleteModalOpen}

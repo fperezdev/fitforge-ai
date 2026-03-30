@@ -120,7 +120,7 @@ export function ProgressPage() {
                 </p>
               </div>
               <Button asChild className="mt-2">
-                <Link to="/workout">Start a workout</Link>
+                <Link to="/plan">Start a workout</Link>
               </Button>
             </div>
           </CardContent>

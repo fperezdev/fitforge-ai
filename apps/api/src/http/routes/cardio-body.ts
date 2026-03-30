@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, isNotNull } from "drizzle-orm";
 import {
   cardioSessions,
   cardioSplits,
@@ -71,9 +71,13 @@ export const cardioRoutes = new Hono()
     const userId = getUserId(c);
     const db = getDb();
     const limit = Number(c.req.query("limit") ?? 20);
+    const planDayId = c.req.query("planDayId");
 
     const sessions = await db.query.cardioSessions.findMany({
-      where: eq(cardioSessions.userId, userId),
+      where: and(
+        eq(cardioSessions.userId, userId),
+        planDayId ? eq(cardioSessions.planDayId, planDayId) : isNotNull(cardioSessions.id),
+      ),
       orderBy: [desc(cardioSessions.startedAt)],
       limit,
       with: { splits: { orderBy: (s, { asc }) => [asc(s.kilometer)] } },

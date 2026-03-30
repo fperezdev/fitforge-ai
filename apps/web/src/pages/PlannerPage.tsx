@@ -53,7 +53,7 @@ export function PlannerPage() {
     mutationFn: (data: NewPlanForm) => api.post<{ id: string }>("/plans", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["plans"] });
-      navigate("/planner", { replace: true });
+      navigate("/plan", { replace: true });
     },
   });
 

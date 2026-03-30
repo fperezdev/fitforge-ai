@@ -13,6 +13,7 @@ import {
   cardioTemplateExercises,
   planDayLogs,
   exerciseEntries,
+  workoutSessions,
   coachConversations,
 } from "@fitforge/db";
 import { getDb } from "../../infrastructure/db.js";
@@ -393,85 +394,6 @@ export const planRoutes = new Hono()
         logsByDay.set(key, arr);
       }
 
-      // Auto-skip unresolved training slots from past microcycles (weeks that have ended).
-      // A week has ended when the current calendar position is past its last day.
-
-      const autoSkipInserts: {
-        userId: string;
-        trainingPlanId: string;
-        planDayId: string;
-        weekIndex: number;
-        dayIndex: number;
-        status: string;
-      }[] = [];
-
-      for (const mc of plan.microcycles) {
-        const wi = mc.position - 1; // 0-based weekIndex
-
-        // Only process weeks that are strictly before the current week.
-        // For cyclic plans (mesocycle repeats), compare absolute week position.
-        const absoluteCurrentWeek = Math.floor(daysSince / plan.microcycleLength);
-        const absoluteSlotWeek =
-          wi + Math.floor(absoluteCurrentWeek / plan.mesocycleLength) * plan.mesocycleLength;
-        // A past cycle's week
-        if (absoluteSlotWeek >= absoluteCurrentWeek) continue;
-
-        for (const day of mc.days) {
-          if (day.type !== "training") continue;
-          const di = day.dayNumber - 1; // 0-based dayIndex
-          const key = `${wi}:${di}`;
-          const statuses = logsByDay.get(key) ?? [];
-          const hasWorkout = !!day.workoutTemplateId;
-          const hasCardio = !!day.cardioTemplateId;
-
-          // Insert workout_skipped if workout exists and not yet resolved
-          if (
-            hasWorkout &&
-            !statuses.includes("workout_completed") &&
-            !statuses.includes("workout_skipped") &&
-            !statuses.includes("skipped") &&
-            !statuses.includes("completed")
-          ) {
-            autoSkipInserts.push({
-              userId,
-              trainingPlanId: plan.id,
-              planDayId: day.id,
-              weekIndex: wi,
-              dayIndex: di,
-              status: "workout_skipped",
-            });
-            const arr = logsByDay.get(key) ?? [];
-            arr.push("workout_skipped");
-            logsByDay.set(key, arr);
-          }
-
-          // Insert cardio_skipped if cardio exists and not yet resolved
-          if (
-            hasCardio &&
-            !statuses.includes("cardio_completed") &&
-            !statuses.includes("cardio_skipped") &&
-            !statuses.includes("skipped") &&
-            !statuses.includes("completed")
-          ) {
-            autoSkipInserts.push({
-              userId,
-              trainingPlanId: plan.id,
-              planDayId: day.id,
-              weekIndex: wi,
-              dayIndex: di,
-              status: "cardio_skipped",
-            });
-            const arr = logsByDay.get(key) ?? [];
-            arr.push("cardio_skipped");
-            logsByDay.set(key, arr);
-          }
-        }
-      }
-
-      if (autoSkipInserts.length > 0) {
-        await db.insert(planDayLogs).values(autoSkipInserts).onConflictDoNothing();
-      }
-
       // A day slot is "fully done" (should be skipped in suggestion) when:
       //   - it has a 'skipped' or 'completed' full-day log, OR
       //   - both its workout and cardio components are resolved
@@ -654,6 +576,122 @@ export const planRoutes = new Hono()
       return c.json({ ok: true, newStartDate });
     },
   )
+
+  // Complete the active plan: skip all unresolved sessions, cancel in-progress workouts,
+  // and mark the plan as completed.
+  .post("/active/complete", async (c) => {
+    const userId = getUserId(c);
+    const db = getDb();
+
+    const plan = await db.query.trainingPlans.findFirst({
+      where: and(eq(trainingPlans.userId, userId), eq(trainingPlans.status, "active")),
+      with: {
+        microcycles: {
+          orderBy: (pm, { asc }) => [asc(pm.position)],
+          with: { days: { orderBy: (pd, { asc }) => [asc(pd.dayNumber)] } },
+        },
+      },
+    });
+
+    if (!plan) return c.json({ error: "No active plan" }, 404);
+
+    // Fetch existing logs to avoid double-inserting
+    const existingLogs = await db
+      .select({
+        weekIndex: planDayLogs.weekIndex,
+        dayIndex: planDayLogs.dayIndex,
+        status: planDayLogs.status,
+      })
+      .from(planDayLogs)
+      .where(eq(planDayLogs.trainingPlanId, plan.id));
+
+    const logsByDay = new Map<string, string[]>();
+    for (const l of existingLogs) {
+      const key = `${l.weekIndex}:${l.dayIndex}`;
+      const arr = logsByDay.get(key) ?? [];
+      arr.push(l.status);
+      logsByDay.set(key, arr);
+    }
+
+    // Collect skip inserts for every unresolved component across all weeks
+    const skipInserts: {
+      userId: string;
+      trainingPlanId: string;
+      planDayId: string;
+      weekIndex: number;
+      dayIndex: number;
+      status: string;
+    }[] = [];
+
+    for (const mc of plan.microcycles) {
+      const wi = mc.position - 1;
+      for (const day of mc.days) {
+        if (day.type !== "training") continue;
+        const di = day.dayNumber - 1;
+        const key = `${wi}:${di}`;
+        const statuses = logsByDay.get(key) ?? [];
+        const resolved = statuses.includes("skipped") || statuses.includes("completed");
+
+        if (!resolved && day.workoutTemplateId) {
+          const workoutResolved =
+            statuses.includes("workout_completed") || statuses.includes("workout_skipped");
+          if (!workoutResolved) {
+            skipInserts.push({
+              userId,
+              trainingPlanId: plan.id,
+              planDayId: day.id,
+              weekIndex: wi,
+              dayIndex: di,
+              status: "workout_skipped",
+            });
+          }
+        }
+
+        if (!resolved && day.cardioTemplateId) {
+          const cardioResolved =
+            statuses.includes("cardio_completed") || statuses.includes("cardio_skipped");
+          if (!cardioResolved) {
+            skipInserts.push({
+              userId,
+              trainingPlanId: plan.id,
+              planDayId: day.id,
+              weekIndex: wi,
+              dayIndex: di,
+              status: "cardio_skipped",
+            });
+          }
+        }
+      }
+    }
+
+    if (skipInserts.length > 0) {
+      await db.insert(planDayLogs).values(skipInserts).onConflictDoNothing();
+    }
+
+    // Cancel all in-progress workout sessions linked to this plan's days
+    const planDayIds = plan.microcycles.flatMap((mc) => mc.days.map((d) => d.id));
+    if (planDayIds.length > 0) {
+      await db
+        .update(workoutSessions)
+        .set({ status: "cancelled", updatedAt: new Date() })
+        .where(
+          and(
+            eq(workoutSessions.userId, userId),
+            eq(workoutSessions.status, "in_progress"),
+            inArray(workoutSessions.planDayId, planDayIds),
+          ),
+        );
+    }
+
+    // Mark the plan as completed
+    const [completed] = await db
+      .update(trainingPlans)
+      .set({ status: "completed", updatedAt: new Date() })
+      .where(and(eq(trainingPlans.id, plan.id), eq(trainingPlans.userId, userId)))
+      .returning();
+
+    return c.json(completed);
+  })
 
   // Get adherence metrics for the active plan
   .get("/active/adherence", async (c) => {

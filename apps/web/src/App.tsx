@@ -6,15 +6,9 @@ import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { PlanEditorPage } from "@/pages/PlanEditorPage";
-import { WorkoutPage } from "@/pages/WorkoutPage";
-import { ActiveSessionPage } from "@/pages/ActiveSessionPage";
-import { WorkoutDetailPage } from "@/pages/WorkoutDetailPage";
-import { CardioPage } from "@/pages/CardioPage";
-import { CardioDetailPage } from "@/pages/CardioDetailPage";
+import { PlanDayEditorPage } from "@/pages/PlanDayEditorPage";
 import { CoachPage } from "@/pages/CoachPage";
-import { ProgressPage } from "@/pages/ProgressPage";
 import { ProfilePage } from "@/pages/ProfilePage";
-import { BodyPage } from "@/pages/BodyPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,16 +32,9 @@ export function App() {
           <Route element={<RequireAuth />}>
             <Route element={<AppLayout />}>
               <Route path="/" element={<DashboardPage />} />
-              <Route path="/planner" element={<PlanEditorPage />} />
-              <Route path="/workout" element={<WorkoutPage />} />
-              <Route path="/workout/new" element={<WorkoutPage />} />
-              <Route path="/workout/history/:id" element={<WorkoutDetailPage />} />
-              <Route path="/workout/:id" element={<ActiveSessionPage />} />
-              <Route path="/cardio" element={<CardioPage />} />
-              <Route path="/cardio/:id" element={<CardioDetailPage />} />
+              <Route path="/plan" element={<PlanEditorPage />} />
+              <Route path="/plan/day" element={<PlanDayEditorPage />} />
               <Route path="/coach" element={<CoachPage />} />
-              <Route path="/progress" element={<ProgressPage />} />
-              <Route path="/body" element={<BodyPage />} />
               <Route path="/profile" element={<ProfilePage />} />
             </Route>
           </Route>

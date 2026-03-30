@@ -1029,7 +1029,7 @@ export function CoachPage() {
       setPlanToSave(null);
       queryClient.invalidateQueries({ queryKey: ["conversations"] });
       queryClient.invalidateQueries({ queryKey: ["plans"] });
-      navigate("/planner");
+      navigate("/plan");
     },
   });
 

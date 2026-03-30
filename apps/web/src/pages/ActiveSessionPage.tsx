@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Check, ChevronDown, Timer, StopCircle } from "lucide-react";
+import { Plus, Check, ChevronDown, Timer, StopCircle, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -85,16 +85,19 @@ function SetRow({
   repMax,
   targetRir,
   onUpdate,
+  onDelete,
 }: {
   set: Session["exerciseEntries"][0]["sets"][0];
   repMin: number | null;
   repMax: number | null;
   targetRir: number | null;
   onUpdate: (data: Partial<typeof set>) => void;
+  onDelete: () => void;
 }) {
   const [weight, setWeight] = useState(set.weightKg ?? "");
   const [reps, setReps] = useState(String(set.reps ?? ""));
   const [rir, setRir] = useState(set.rir != null ? String(set.rir) : "");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const repPlaceholder =
     repMin != null && repMax != null
@@ -105,10 +108,42 @@ function SetRow({
 
   const rirPlaceholder = targetRir != null ? String(targetRir) : "RIR";
 
+  if (confirmingDelete) {
+    return (
+      <div
+        className={cn(
+          "flex items-center justify-between gap-2 py-1.5",
+          set.completed && "opacity-60",
+        )}
+      >
+        <span className="text-xs text-destructive">Delete set {set.setNumber}?</span>
+        <div className="flex gap-1">
+          <button
+            onClick={() => setConfirmingDelete(false)}
+            className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Cancel delete"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => {
+              setConfirmingDelete(false);
+              onDelete();
+            }}
+            className="h-7 w-7 rounded flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors"
+            aria-label="Confirm delete"
+          >
+            <Check className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
-        "grid grid-cols-[2rem_1fr_1fr_1fr_2rem] gap-2 items-center py-1.5",
+        "grid grid-cols-[2rem_1fr_1fr_1fr_2rem_2rem] gap-2 items-center py-1.5",
         set.completed && "opacity-60",
       )}
     >
@@ -152,6 +187,13 @@ function SetRow({
       >
         <Check className="h-3.5 w-3.5" />
       </button>
+      <button
+        onClick={() => setConfirmingDelete(true)}
+        className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+        aria-label={`Delete set ${set.setNumber}`}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -171,11 +213,31 @@ export function ActiveSessionPage() {
     refetchInterval: false,
   });
 
-  // Elapsed timer
+  // Elapsed timer — derived from wall-clock time so it survives mobile backgrounding.
+  // Using session.startedAt as the anchor means the counter is always correct even if
+  // the browser throttled or froze setInterval while the app was in the background.
   useEffect(() => {
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
+    if (!session?.startedAt) return;
+    const startMs = new Date(session.startedAt).getTime();
+
+    function sync() {
+      setElapsed(Math.floor((Date.now() - startMs) / 1000));
+    }
+
+    sync(); // immediate update on mount / re-mount
+    const t = setInterval(sync, 1000);
+
+    // Re-sync the instant the page becomes visible again (tab switch, app resume on mobile)
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") sync();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [session?.startedAt]);
 
   const updateSetMutation = useMutation({
     mutationFn: ({
@@ -213,6 +275,38 @@ export function ActiveSessionPage() {
     },
   });
 
+  const deleteSetMutation = useMutation({
+    mutationFn: ({ entryId, setId }: { entryId: string; setId: string }) =>
+      api.delete(`/sessions/${id}/exercises/${entryId}/sets/${setId}`),
+    onMutate: async ({ entryId, setId }) => {
+      await queryClient.cancelQueries({ queryKey: ["session", id] });
+      const previous = queryClient.getQueryData<Session>(["session", id]);
+      queryClient.setQueryData<Session>(["session", id], (prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          exerciseEntries: prev.exerciseEntries.map((entry) =>
+            entry.id !== entryId
+              ? entry
+              : {
+                  ...entry,
+                  sets: entry.sets
+                    .filter((s) => s.id !== setId)
+                    .map((s, i) => ({ ...s, setNumber: i + 1 })),
+                },
+          ),
+        };
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["session", id], context.previous);
+      }
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["session", id] }),
+  });
+
   const addSetMutation = useMutation({
     mutationFn: ({ entryId, setNumber }: { entryId: string; setNumber: number }) =>
       api.post(`/sessions/${id}/exercises/${entryId}/sets`, {
@@ -228,7 +322,7 @@ export function ActiveSessionPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
       queryClient.invalidateQueries({ queryKey: ["activePlan"] });
-      navigate("/workout");
+      navigate("/plan");
     },
   });
 
@@ -321,11 +415,12 @@ export function ActiveSessionPage() {
                 {isExpanded && (
                   <CardContent className="pt-0 space-y-1">
                     {/* Column headers */}
-                    <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem] gap-2 mb-1">
+                    <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem_2rem] gap-2 mb-1">
                       <span className="text-xs text-muted-foreground text-center">Set</span>
                       <span className="text-xs text-muted-foreground">Weight</span>
                       <span className="text-xs text-muted-foreground">Reps</span>
                       <span className="text-xs text-muted-foreground">RIR</span>
+                      <span />
                       <span />
                     </div>
 
@@ -345,6 +440,9 @@ export function ActiveSessionPage() {
                             data,
                           });
                         }}
+                        onDelete={() =>
+                          deleteSetMutation.mutate({ entryId: entry.id, setId: set.id })
+                        }
                       />
                     ))}
 

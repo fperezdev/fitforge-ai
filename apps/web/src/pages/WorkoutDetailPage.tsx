@@ -61,7 +61,7 @@ export function WorkoutDetailPage() {
   if (isError) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={() => navigate("/workout")}>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/plan")}>
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
@@ -77,7 +77,7 @@ export function WorkoutDetailPage() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate("/workout")}
+            onClick={() => navigate("/plan")}
             className="-ml-2 mb-3"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -116,12 +116,7 @@ export function WorkoutDetailPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate("/workout")}
-          className="-ml-2 mb-3"
-        >
+        <Button variant="ghost" size="sm" onClick={() => navigate("/plan")} className="-ml-2 mb-3">
           <ArrowLeft className="h-4 w-4" />
           Workouts
         </Button>

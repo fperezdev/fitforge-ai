@@ -1,34 +1,15 @@
-import { useState, useRef, useEffect } from "react";
-import { NavLink, useNavigate, useLocation } from "react-router-dom";
-import {
-  LayoutDashboard,
-  CalendarDays,
-  Dumbbell,
-  Activity,
-  Bot,
-  TrendingUp,
-  LogOut,
-  UserCircle,
-  Ellipsis,
-  Scale,
-} from "lucide-react";
+import { NavLink, useNavigate } from "react-router-dom";
+import { LayoutDashboard, CalendarDays, Bot, UserCircle, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/planner", icon: CalendarDays, label: "Planner" },
+  { to: "/plan", icon: CalendarDays, label: "Plan" },
   { to: "/coach", icon: Bot, label: "AI Coach" },
-  { to: "/progress", icon: TrendingUp, label: "Progress" },
-  { to: "/workout", icon: Dumbbell, label: "Workout" },
-  { to: "/cardio", icon: Activity, label: "Cardio" },
-  { to: "/body", icon: Scale, label: "Body" },
   { to: "/profile", icon: UserCircle, label: "Profile" },
 ];
-
-const mobileMainItems = navItems.slice(0, 4);
-const mobileMoreItems = navItems.slice(4);
 
 export function Sidebar() {
   const { logout } = useAuthStore();
@@ -84,43 +65,12 @@ export function Sidebar() {
 
 // Bottom nav for mobile
 export function BottomNav() {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const navRef = useRef<HTMLElement>(null);
-  const location = useLocation();
-
-  const isMoreActive = mobileMoreItems.some((item) =>
-    item.to === "/" ? location.pathname === "/" : location.pathname.startsWith(item.to),
-  );
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMoreOpen(false);
-      }
-    }
-    if (moreOpen) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [moreOpen]);
-
-  // Prevent pinch-to-zoom on the nav bar on iOS (touch-action CSS is not enough on iOS WebKit)
-  useEffect(() => {
-    const nav = navRef.current;
-    if (!nav) return;
-    function preventZoom(e: TouchEvent) {
-      if (e.touches.length > 1) e.preventDefault();
-    }
-    nav.addEventListener("touchmove", preventZoom, { passive: false });
-    return () => nav.removeEventListener("touchmove", preventZoom);
-  }, []);
-
   return (
     <nav
-      ref={navRef}
       className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-card border-t border-border flex items-center"
       aria-label="Mobile navigation"
     >
-      {mobileMainItems.map(({ to, icon: Icon, label }) => (
+      {navItems.map(({ to, icon: Icon, label }) => (
         <NavLink
           key={to}
           to={to}
@@ -136,44 +86,6 @@ export function BottomNav() {
           {label}
         </NavLink>
       ))}
-
-      {/* More menu */}
-      <div className="relative flex flex-1" ref={menuRef}>
-        <button
-          onClick={() => setMoreOpen((v) => !v)}
-          className={cn(
-            "flex flex-1 flex-col items-center gap-1 py-2 text-base scale-75 origin-bottom font-medium transition-colors",
-            moreOpen || isMoreActive
-              ? "text-primary"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <Ellipsis className="h-5 w-5" />
-          More
-        </button>
-
-        {moreOpen && (
-          <div className="absolute bottom-full right-0 mb-2 w-44 rounded-xl border border-border bg-card shadow-lg py-1 overflow-hidden">
-            {mobileMoreItems.map(({ to, icon: Icon, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === "/"}
-                onClick={() => setMoreOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-colors",
-                    isActive ? "bg-primary/10 text-primary" : "text-foreground hover:bg-accent",
-                  )
-                }
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </NavLink>
-            ))}
-          </div>
-        )}
-      </div>
     </nav>
   );
 }

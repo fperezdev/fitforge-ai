@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, isNotNull } from "drizzle-orm";
 import {
   workoutSessions,
   exerciseEntries,
@@ -47,11 +47,24 @@ export const sessionRoutes = new Hono()
     const userId = getUserId(c);
     const db = getDb();
     const limit = Number(c.req.query("limit") ?? 20);
+    const planDayId = c.req.query("planDayId");
 
     const sessions = await db.query.workoutSessions.findMany({
-      where: eq(workoutSessions.userId, userId),
+      where: and(
+        eq(workoutSessions.userId, userId),
+        planDayId ? eq(workoutSessions.planDayId, planDayId) : isNotNull(workoutSessions.id),
+      ),
       orderBy: [desc(workoutSessions.startedAt)],
       limit,
+      with: {
+        exerciseEntries: {
+          with: {
+            exercise: true,
+            sets: { orderBy: (s, { asc }) => [asc(s.setNumber)] },
+          },
+          orderBy: (e, { asc }) => [asc(e.order)],
+        },
+      },
     });
 
     return c.json(sessions);
@@ -318,4 +331,25 @@ export const sessionRoutes = new Hono()
       if (!updated) return c.json({ error: "Set not found" }, 404);
       return c.json(updated);
     },
-  );
+  )
+
+  // Delete a set
+  .delete("/:id/exercises/:entryId/sets/:setId", async (c) => {
+    const userId = getUserId(c);
+    const { id, entryId, setId } = c.req.param();
+    const db = getDb();
+
+    // Verify ownership via session
+    const session = await db.query.workoutSessions.findFirst({
+      where: and(eq(workoutSessions.id, id), eq(workoutSessions.userId, userId)),
+    });
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    const [deleted] = await db
+      .delete(exerciseSets)
+      .where(and(eq(exerciseSets.id, setId), eq(exerciseSets.exerciseEntryId, entryId)))
+      .returning();
+
+    if (!deleted) return c.json({ error: "Set not found" }, 404);
+    return c.json({ ok: true });
+  });
